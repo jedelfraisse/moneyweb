@@ -3,6 +3,7 @@ namespace MoneyWeb.Data.Models;
 public class Debt
 {
     public int Id { get; set; }
+    public int UserId { get; set; }
     public string Name { get; set; } = string.Empty;
     public string? Lender { get; set; }
     public decimal Balance { get; set; }

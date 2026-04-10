@@ -9,20 +9,20 @@ public class BillRepository(string connectionString) : IBillRepository
 {
     private SqlConnection Connect() => new(connectionString);
 
-    public async Task<IEnumerable<Bill>> GetAllAsync(bool activeOnly = true)
+    public async Task<IEnumerable<Bill>> GetAllAsync(int userId, bool activeOnly = true)
     {
         using var conn = Connect();
         var sql = activeOnly
-            ? "SELECT * FROM Bills WHERE IsActive = 1 ORDER BY Name"
-            : "SELECT * FROM Bills ORDER BY Name";
-        return await conn.QueryAsync<Bill>(sql);
+            ? "SELECT * FROM Bills WHERE UserId = @UserId AND IsActive = 1 ORDER BY Name"
+            : "SELECT * FROM Bills WHERE UserId = @UserId ORDER BY Name";
+        return await conn.QueryAsync<Bill>(sql, new { UserId = userId });
     }
 
-    public async Task<Bill?> GetByIdAsync(int id)
+    public async Task<Bill?> GetByIdAsync(int id, int userId)
     {
         using var conn = Connect();
         return await conn.QuerySingleOrDefaultAsync<Bill>(
-            "SELECT * FROM Bills WHERE Id = @Id", new { Id = id });
+            "SELECT * FROM Bills WHERE Id = @Id AND UserId = @UserId", new { Id = id, UserId = userId });
     }
 
     public async Task<int> CreateAsync(Bill bill)
@@ -48,9 +48,9 @@ public class BillRepository(string connectionString) : IBillRepository
         await conn.ExecuteAsync(sql, bill);
     }
 
-    public async Task DeleteAsync(int id)
+    public async Task DeleteAsync(int id, int userId)
     {
         using var conn = Connect();
-        await conn.ExecuteAsync("DELETE FROM Bills WHERE Id = @Id", new { Id = id });
+        await conn.ExecuteAsync("DELETE FROM Bills WHERE Id = @Id AND UserId = @UserId", new { Id = id, UserId = userId });
     }
 }

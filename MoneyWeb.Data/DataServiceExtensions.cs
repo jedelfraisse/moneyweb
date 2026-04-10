@@ -13,6 +13,7 @@ public static class DataServiceExtensions
         services.AddScoped<IDebtRepository>(_ => new DebtRepository(connectionString));
         services.AddScoped<IBillRepository>(_ => new BillRepository(connectionString));
         services.AddScoped<ILoanRepository>(_ => new LoanRepository(connectionString));
+        services.AddScoped<IUserRepository>(_ => new UserRepository(connectionString));
 
         // FluentMigrator
         services.AddFluentMigratorCore()

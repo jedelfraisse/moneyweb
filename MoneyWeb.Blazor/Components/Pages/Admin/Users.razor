@@ -1,0 +1,147 @@
+@page "/admin/users"
+@rendermode InteractiveServer
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@inject CurrentUserService CurrentUserSvc
+@inject IUserRepository UserRepo
+@inject NavigationManager Navigation
+
+<PageTitle>User Management</PageTitle>
+
+@if (_currentUser is null)
+{
+    <div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>
+}
+else if (!_currentUser.IsAdmin)
+{
+    <div class="alert alert-danger">Access denied. Admins only.</div>
+}
+else
+{
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="h3 mb-0">User Management</h1>
+        <span class="badge bg-secondary">@_users.Count user(s)</span>
+    </div>
+
+    @if (!string.IsNullOrEmpty(_message))
+    {
+        <div class="alert alert-success alert-dismissible">
+            @_message
+            <button type="button" class="btn-close" @onclick="() => _message = null"></button>
+        </div>
+    }
+
+    <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead class="table-dark">
+                <tr>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Joined</th>
+                    <th class="text-center">Approved</th>
+                    <th class="text-center">Admin</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var user in _users)
+                {
+                    <tr class="@(user.Id == _currentUser.Id ? "table-active" : "")">
+                        <td>
+                            @user.DisplayName
+                            @if (user.Id == _currentUser.Id)
+                            {
+                                <span class="badge bg-primary ms-1">You</span>
+                            }
+                        </td>
+                        <td class="text-muted">@user.Email</td>
+                        <td>@user.CreatedAt.ToString("MMM d, yyyy")</td>
+                        <td class="text-center">
+                            <div class="form-check form-switch d-flex justify-content-center">
+                                <input class="form-check-input" type="checkbox"
+                                       checked="@user.IsApproved"
+                                       disabled="@(user.Id == _currentUser.Id)"
+                                       @onchange="e => ToggleApproved(user, (bool)e.Value!)" />
+                            </div>
+                        </td>
+                        <td class="text-center">
+                            <div class="form-check form-switch d-flex justify-content-center">
+                                <input class="form-check-input" type="checkbox"
+                                       checked="@user.IsAdmin"
+                                       disabled="@(user.Id == _currentUser.Id)"
+                                       @onchange="e => ToggleAdmin(user, (bool)e.Value!)" />
+                            </div>
+                        </td>
+                        <td class="text-end">
+                            @if (user.Id != _currentUser.Id)
+                            {
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(user)">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (_userToDelete is not null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.5)">
+        <div class="modal-dialog modal-sm">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Remove User</h5>
+                    <button type="button" class="btn-close" @onclick="() => _userToDelete = null"></button>
+                </div>
+                <div class="modal-body">
+                    Delete all data for <strong>@_userToDelete.DisplayName</strong> and remove their account?
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="() => _userToDelete = null">Cancel</button>
+                    <button class="btn btn-danger" @onclick="DeleteUser">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private User? _currentUser;
+    private List<User> _users = [];
+    private string? _message;
+    private User? _userToDelete;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _currentUser = await CurrentUserSvc.GetCurrentUserAsync();
+        if (_currentUser?.IsAdmin == true)
+            _users = (await UserRepo.GetAllAsync()).ToList();
+    }
+
+    private async Task ToggleApproved(User user, bool value)
+    {
+        user.IsApproved = value;
+        await UserRepo.UpdateAsync(user);
+        _message = $"{user.DisplayName} approval set to {value}.";
+    }
+
+    private async Task ToggleAdmin(User user, bool value)
+    {
+        user.IsAdmin = value;
+        await UserRepo.UpdateAsync(user);
+        _message = $"{user.DisplayName} admin status set to {value}.";
+    }
+
+    private void ConfirmDelete(User user) => _userToDelete = user;
+
+    private async Task DeleteUser()
+    {
+        if (_userToDelete is null) return;
+        await UserRepo.DeleteUserDataAsync(_userToDelete.Id);
+        _users = (await UserRepo.GetAllAsync()).ToList();
+        _message = $"Data for {_userToDelete.DisplayName} has been deleted.";
+        _userToDelete = null;
+    }
+}

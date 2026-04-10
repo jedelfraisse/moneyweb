@@ -1,0 +1,326 @@
+@page "/debts"
+@rendermode InteractiveServer
+@attribute [Authorize]
+@inject IDebtRepository DebtRepo
+@inject CurrentUserService CurrentUserSvc
+@inject NavigationManager Navigation
+
+<PageTitle>Debts</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h3 mb-0">Debts</h1>
+    <button class="btn btn-primary" @onclick="OpenAddModal">
+        <i class="bi bi-plus-lg"></i> Add Debt
+    </button>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>
+}
+else if (!_debts.Any())
+{
+    <div class="alert alert-info">No debts found. Add one to get started.</div>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead class="table-dark">
+                <tr>
+                    <th>Name</th>
+                    <th>Lender</th>
+                    <th class="text-end">Balance</th>
+                    <th class="text-end">APR</th>
+                    <th class="text-end">Min Payment</th>
+                    <th>Payoff Date</th>
+                    <th class="text-center">Active</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var debt in _debts)
+                {
+                    <tr>
+                        <td>@debt.Name</td>
+                        <td class="text-muted">@debt.Lender</td>
+                        <td class="text-end">@debt.Balance.ToString("C")</td>
+                        <td class="text-end">@((debt.InterestRate * 100).ToString("F2"))%</td>
+                        <td class="text-end">@debt.MinimumPayment.ToString("C")</td>
+                        <td>@(debt.PayoffDate?.ToString("MMM d, yyyy") ?? "—")</td>
+                        <td class="text-center">
+                            @if (debt.IsActive)
+                            {
+                                <span class="badge bg-success">Active</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-secondary">Inactive</span>
+                            }
+                        </td>
+                        <td class="text-end text-nowrap">
+                            <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => OpenEditModal(debt)">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(debt)">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+            <tfoot class="table-secondary fw-bold">
+                <tr>
+                    <td colspan="2">Totals</td>
+                    <td class="text-end">@_debts.Where(d => d.IsActive).Sum(d => d.Balance).ToString("C")</td>
+                    <td></td>
+                    <td class="text-end">@_debts.Where(d => d.IsActive).Sum(d => d.MinimumPayment).ToString("C")</td>
+                    <td colspan="3"></td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <div class="alert alert-danger mt-3">@_errorMessage</div>
+}
+
+<!-- Add / Edit Modal -->
+@if (_showFormModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.5)">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <EditForm Model="_form" OnValidSubmit="SaveDebt">
+                    <DataAnnotationsValidator />
+                    <div class="modal-header">
+                        <h5 class="modal-title">@(_isEditing ? "Edit Debt" : "Add Debt")</h5>
+                        <button type="button" class="btn-close" @onclick="CloseModal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label">Name <span class="text-danger">*</span></label>
+                            <InputText class="form-control" @bind-Value="_form.Name" />
+                            <ValidationMessage For="() => _form.Name" class="text-danger small" />
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Lender</label>
+                            <InputText class="form-control" @bind-Value="_form.Lender" />
+                        </div>
+                        <div class="row">
+                            <div class="col mb-3">
+                                <label class="form-label">Balance <span class="text-danger">*</span></label>
+                                <div class="input-group">
+                                    <span class="input-group-text">$</span>
+                                    <InputNumber class="form-control" @bind-Value="_form.Balance" />
+                                </div>
+                                <ValidationMessage For="() => _form.Balance" class="text-danger small" />
+                            </div>
+                            <div class="col mb-3">
+                                <label class="form-label">APR % <span class="text-danger">*</span></label>
+                                <div class="input-group">
+                                    <InputNumber class="form-control" @bind-Value="_form.InterestRatePercent" />
+                                    <span class="input-group-text">%</span>
+                                </div>
+                                <ValidationMessage For="() => _form.InterestRatePercent" class="text-danger small" />
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col mb-3">
+                                <label class="form-label">Minimum Payment <span class="text-danger">*</span></label>
+                                <div class="input-group">
+                                    <span class="input-group-text">$</span>
+                                    <InputNumber class="form-control" @bind-Value="_form.MinimumPayment" />
+                                </div>
+                                <ValidationMessage For="() => _form.MinimumPayment" class="text-danger small" />
+                            </div>
+                            <div class="col mb-3">
+                                <label class="form-label">Payoff Date</label>
+                                <InputDate class="form-control" @bind-Value="_form.PayoffDate" />
+                            </div>
+                        </div>
+                        <div class="form-check">
+                            <InputCheckbox class="form-check-input" @bind-Value="_form.IsActive" id="isActiveCheck" />
+                            <label class="form-check-label" for="isActiveCheck">Active</label>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" @onclick="CloseModal">Cancel</button>
+                        <button type="submit" class="btn btn-primary" disabled="@_saving">
+                            @if (_saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                            Save
+                        </button>
+                    </div>
+                </EditForm>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Delete Confirm Modal -->
+@if (_debtToDelete is not null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.5)">
+        <div class="modal-dialog modal-sm">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Delete Debt</h5>
+                    <button type="button" class="btn-close" @onclick="() => _debtToDelete = null"></button>
+                </div>
+                <div class="modal-body">
+                    Are you sure you want to delete <strong>@_debtToDelete.Name</strong>?
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="() => _debtToDelete = null">Cancel</button>
+                    <button class="btn btn-danger" @onclick="DeleteDebt">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<Debt> _debts = [];
+    private bool _loading = true;
+    private bool _saving;
+    private bool _showFormModal;
+    private bool _isEditing;
+    private string? _errorMessage;
+    private Debt? _debtToDelete;
+    private DebtFormModel _form = new();
+    private int _userId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = await CurrentUserSvc.GetCurrentUserAsync();
+        if (user is null || !user.IsApproved)
+        {
+            Navigation.NavigateTo("/pending-approval", forceLoad: true);
+            return;
+        }
+        _userId = user.Id;
+        await LoadDebts();
+    }
+
+    private async Task LoadDebts()
+    {
+        _loading = true;
+        _debts = (await DebtRepo.GetAllAsync(_userId, activeOnly: false)).ToList();
+        _loading = false;
+    }
+
+    private void OpenAddModal()
+    {
+        _form = new DebtFormModel { IsActive = true };
+        _isEditing = false;
+        _showFormModal = true;
+        _errorMessage = null;
+    }
+
+    private void OpenEditModal(Debt debt)
+    {
+        _form = new DebtFormModel
+        {
+            Id = debt.Id,
+            Name = debt.Name,
+            Lender = debt.Lender,
+            Balance = debt.Balance,
+            InterestRatePercent = debt.InterestRate * 100,
+            MinimumPayment = debt.MinimumPayment,
+            PayoffDate = debt.PayoffDate,
+            IsActive = debt.IsActive
+        };
+        _isEditing = true;
+        _showFormModal = true;
+        _errorMessage = null;
+    }
+
+    private void CloseModal()
+    {
+        _showFormModal = false;
+        _errorMessage = null;
+    }
+
+    private async Task SaveDebt()
+    {
+        _saving = true;
+        _errorMessage = null;
+        try
+        {
+            var debt = new Debt
+            {
+                Id = _form.Id,
+                UserId = _userId,
+                Name = _form.Name,
+                Lender = string.IsNullOrWhiteSpace(_form.Lender) ? null : _form.Lender,
+                Balance = _form.Balance,
+                InterestRate = _form.InterestRatePercent / 100,
+                MinimumPayment = _form.MinimumPayment,
+                PayoffDate = _form.PayoffDate,
+                IsActive = _form.IsActive
+            };
+
+            if (_isEditing)
+                await DebtRepo.UpdateAsync(debt);
+            else
+                await DebtRepo.CreateAsync(debt);
+
+            _showFormModal = false;
+            await LoadDebts();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to save: {ex.Message}";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void ConfirmDelete(Debt debt)
+    {
+        _debtToDelete = debt;
+        _errorMessage = null;
+    }
+
+    private async Task DeleteDebt()
+    {
+        if (_debtToDelete is null) return;
+        try
+        {
+            await DebtRepo.DeleteAsync(_debtToDelete.Id, _userId);
+            _debtToDelete = null;
+            await LoadDebts();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to delete: {ex.Message}";
+            _debtToDelete = null;
+        }
+    }
+
+    private class DebtFormModel
+    {
+        [System.ComponentModel.DataAnnotations.Required]
+        [System.ComponentModel.DataAnnotations.StringLength(200)]
+        public string Name { get; set; } = string.Empty;
+
+        public string? Lender { get; set; }
+
+        [System.ComponentModel.DataAnnotations.Range(0.01, double.MaxValue, ErrorMessage = "Balance must be greater than 0")]
+        public decimal Balance { get; set; }
+
+        [System.ComponentModel.DataAnnotations.Range(0, 100, ErrorMessage = "APR must be between 0 and 100")]
+        public decimal InterestRatePercent { get; set; }
+
+        [System.ComponentModel.DataAnnotations.Range(0.01, double.MaxValue, ErrorMessage = "Minimum payment must be greater than 0")]
+        public decimal MinimumPayment { get; set; }
+
+        public DateOnly? PayoffDate { get; set; }
+        public bool IsActive { get; set; } = true;
+        public int Id { get; set; }
+    }
+}

@@ -9,20 +9,20 @@ public class LoanRepository(string connectionString) : ILoanRepository
 {
     private SqlConnection Connect() => new(connectionString);
 
-    public async Task<IEnumerable<Loan>> GetAllAsync(bool unsettledOnly = false)
+    public async Task<IEnumerable<Loan>> GetAllAsync(int userId, bool unsettledOnly = false)
     {
         using var conn = Connect();
         var sql = unsettledOnly
-            ? "SELECT * FROM Loans WHERE IsSettled = 0 ORDER BY LoanDate DESC"
-            : "SELECT * FROM Loans ORDER BY LoanDate DESC";
-        return await conn.QueryAsync<Loan>(sql);
+            ? "SELECT * FROM Loans WHERE UserId = @UserId AND IsSettled = 0 ORDER BY LoanDate DESC"
+            : "SELECT * FROM Loans WHERE UserId = @UserId ORDER BY LoanDate DESC";
+        return await conn.QueryAsync<Loan>(sql, new { UserId = userId });
     }
 
-    public async Task<Loan?> GetByIdAsync(int id)
+    public async Task<Loan?> GetByIdAsync(int id, int userId)
     {
         using var conn = Connect();
         return await conn.QuerySingleOrDefaultAsync<Loan>(
-            "SELECT * FROM Loans WHERE Id = @Id", new { Id = id });
+            "SELECT * FROM Loans WHERE Id = @Id AND UserId = @UserId", new { Id = id, UserId = userId });
     }
 
     public async Task<int> CreateAsync(Loan loan)
@@ -50,9 +50,9 @@ public class LoanRepository(string connectionString) : ILoanRepository
         await conn.ExecuteAsync(sql, loan);
     }
 
-    public async Task DeleteAsync(int id)
+    public async Task DeleteAsync(int id, int userId)
     {
         using var conn = Connect();
-        await conn.ExecuteAsync("DELETE FROM Loans WHERE Id = @Id", new { Id = id });
+        await conn.ExecuteAsync("DELETE FROM Loans WHERE Id = @Id AND UserId = @UserId", new { Id = id, UserId = userId });
     }
 }

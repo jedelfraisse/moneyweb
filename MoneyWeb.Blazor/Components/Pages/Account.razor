@@ -1,0 +1,87 @@
+@page "/account"
+@rendermode InteractiveServer
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@inject CurrentUserService CurrentUserSvc
+@inject IUserRepository UserRepo
+@inject NavigationManager Navigation
+
+<PageTitle>My Account</PageTitle>
+
+<h1 class="h3 mb-4">My Account</h1>
+
+@if (_user is null)
+{
+    <div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>
+}
+else
+{
+    <div class="row">
+        <div class="col-md-5">
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">Profile</h5>
+                    <dl class="row mb-0">
+                        <dt class="col-sm-4">Name</dt>
+                        <dd class="col-sm-8">@_user.DisplayName</dd>
+                        <dt class="col-sm-4">Email</dt>
+                        <dd class="col-sm-8">@_user.Email</dd>
+                        <dt class="col-sm-4">Member since</dt>
+                        <dd class="col-sm-8">@_user.CreatedAt.ToString("MMMM d, yyyy")</dd>
+                    </dl>
+                </div>
+            </div>
+
+            <div class="card border-danger">
+                <div class="card-body">
+                    <h5 class="card-title text-danger">Danger Zone</h5>
+                    <p class="text-muted small">
+                        Permanently deletes all your debts, bills, loans, and transactions.
+                        This cannot be undone.
+                    </p>
+                    @if (!_confirmingDelete)
+                    {
+                        <button class="btn btn-outline-danger" @onclick="() => _confirmingDelete = true">
+                            Delete My Data
+                        </button>
+                    }
+                    else
+                    {
+                        <p class="fw-bold text-danger">Are you absolutely sure?</p>
+                        <button class="btn btn-danger me-2" @onclick="DeleteData">Yes, delete everything</button>
+                        <button class="btn btn-secondary" @onclick="() => _confirmingDelete = false">Cancel</button>
+                    }
+                    @if (!string.IsNullOrEmpty(_errorMessage))
+                    {
+                        <div class="alert alert-danger mt-2">@_errorMessage</div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private User? _user;
+    private bool _confirmingDelete;
+    private string? _errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _user = await CurrentUserSvc.GetCurrentUserAsync();
+    }
+
+    private async Task DeleteData()
+    {
+        if (_user is null) return;
+        try
+        {
+            await UserRepo.DeleteUserDataAsync(_user.Id);
+            Navigation.NavigateTo("MicrosoftIdentity/Account/SignOut", forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to delete data: {ex.Message}";
+            _confirmingDelete = false;
+        }
+    }
+}

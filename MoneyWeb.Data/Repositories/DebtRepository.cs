@@ -9,20 +9,20 @@ public class DebtRepository(string connectionString) : IDebtRepository
 {
     private SqlConnection Connect() => new(connectionString);
 
-    public async Task<IEnumerable<Debt>> GetAllAsync(bool activeOnly = true)
+    public async Task<IEnumerable<Debt>> GetAllAsync(int userId, bool activeOnly = true)
     {
         using var conn = Connect();
         var sql = activeOnly
-            ? "SELECT * FROM Debts WHERE IsActive = 1 ORDER BY InterestRate DESC"
-            : "SELECT * FROM Debts ORDER BY InterestRate DESC";
-        return await conn.QueryAsync<Debt>(sql);
+            ? "SELECT * FROM Debts WHERE UserId = @UserId AND IsActive = 1 ORDER BY InterestRate DESC"
+            : "SELECT * FROM Debts WHERE UserId = @UserId ORDER BY InterestRate DESC";
+        return await conn.QueryAsync<Debt>(sql, new { UserId = userId });
     }
 
-    public async Task<Debt?> GetByIdAsync(int id)
+    public async Task<Debt?> GetByIdAsync(int id, int userId)
     {
         using var conn = Connect();
         return await conn.QuerySingleOrDefaultAsync<Debt>(
-            "SELECT * FROM Debts WHERE Id = @Id", new { Id = id });
+            "SELECT * FROM Debts WHERE Id = @Id AND UserId = @UserId", new { Id = id, UserId = userId });
     }
 
     public async Task<int> CreateAsync(Debt debt)
@@ -49,9 +49,9 @@ public class DebtRepository(string connectionString) : IDebtRepository
         await conn.ExecuteAsync(sql, debt);
     }
 
-    public async Task DeleteAsync(int id)
+    public async Task DeleteAsync(int id, int userId)
     {
         using var conn = Connect();
-        await conn.ExecuteAsync("DELETE FROM Debts WHERE Id = @Id", new { Id = id });
+        await conn.ExecuteAsync("DELETE FROM Debts WHERE Id = @Id AND UserId = @UserId", new { Id = id, UserId = userId });
     }
 }
