@@ -18,7 +18,10 @@
     <li><strong>Loans</strong> – Track money lent to friends or family and monitor repayments.</li>
     <li><strong>Forecast</strong> – Project cash flow forward so there are no surprises.</li>
 </ul>
-<p><em>MoneyWeb is currently invite-only. Access is granted by an administrator after your account is created.</em></p>
+@if (!_loading && _currentUser?.IsApproved != true)
+{
+    <p><em>MoneyWeb is currently invite-only. Access is granted by an administrator after your account is created.</em></p>
+}
 
 <hr />
 
