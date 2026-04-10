@@ -18,7 +18,12 @@ Core domains:
 - **Data access**: Dapper (raw SQL, no EF Core)
 - **Migrations**: FluentMigrator
 - **Frontend**: Blazor Server with Bootstrap for responsive UI
-- **Integration**: Part of delfraisse.com ecosystem; see `sub-application-copilot-instructions.md` for portal integration guidelines
+
+## delfraisse.com Ecosystem
+
+MoneyWeb is one of several apps under the delfraisse.com portal. It must function **fully independently** — the portal is a directory and optional service provider, not a dependency.
+
+Optional integrations (SSO via Microsoft Entra ID, shared user profiles, membership validation) are described in [`/sub-application-copilot-instructions.md`](/sub-application-copilot-instructions.md). Consult that file before implementing any cross-app or portal-facing feature.
 
 ## Solution Structure
 
