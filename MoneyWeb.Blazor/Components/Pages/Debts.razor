@@ -278,7 +278,7 @@ else
                         <label class="form-label">Interest Rate (%)</label>
                         <input class="form-control" type="number" step="0.01"
                                value="@(_editingDebt.InterestRate * 100)"
-                               @onchange="e => _editingDebt.InterestRate = decimal.Parse(e.Value!.ToString()!) / 100m" />
+                               @onchange="e => { if (decimal.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var r)) _editingDebt.InterestRate = r / 100m; }" />
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Minimum Payment</label>
@@ -286,7 +286,8 @@ else
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Group (optional)</label>
-                        <select class="form-select" @bind="_editingDebt.GroupId">
+                        <select class="form-select" value="@_groupIdStr"
+                                @onchange="e => _groupIdStr = e.Value?.ToString() ?? string.Empty">
                             <option value="">— Ungrouped —</option>
                             @foreach (var g in _groups)
                             {
@@ -294,7 +295,7 @@ else
                             }
                         </select>
                     </div>
-                    @if (_editingDebt.GroupId.HasValue)
+                    @if (!string.IsNullOrEmpty(_groupIdStr))
                     {
                         <div class="mb-3">
                             <label class="form-label">Sort Order (for Custom strategy)</label>
@@ -372,6 +373,7 @@ else
     // Debt modal
     private bool _showDebtModal;
     private Debt _editingDebt = new();
+    private string _groupIdStr = string.Empty;
     private string? _debtError;
     private Debt? _deleteDebtTarget;
 
@@ -453,7 +455,8 @@ else
     // ── Debt CRUD ────────────────────────────────────────────────
     private void OpenAddDebt(int? groupId)
     {
-        _editingDebt = new Debt { UserId = _userId, GroupId = groupId, IsActive = true };
+        _editingDebt = new Debt { UserId = _userId, IsActive = true };
+        _groupIdStr = groupId.HasValue ? groupId.Value.ToString() : string.Empty;
         _debtError = null;
         _showDebtModal = true;
     }
@@ -467,6 +470,7 @@ else
             InterestRate = d.InterestRate, MinimumPayment = d.MinimumPayment,
             PayoffDate = d.PayoffDate, IsActive = d.IsActive
         };
+        _groupIdStr = d.GroupId.HasValue ? d.GroupId.Value.ToString() : string.Empty;
         _debtError = null;
         _showDebtModal = true;
     }
@@ -477,6 +481,7 @@ else
     {
         if (string.IsNullOrWhiteSpace(_editingDebt.Name)) { _debtError = "Name is required."; return; }
         if (_editingDebt.Balance < 0) { _debtError = "Balance cannot be negative."; return; }
+        _editingDebt.GroupId = int.TryParse(_groupIdStr, out var gid) ? gid : null;
         _editingDebt.UserId = _userId;
         if (_editingDebt.Id == 0)
             await DebtRepo.CreateAsync(_editingDebt);
