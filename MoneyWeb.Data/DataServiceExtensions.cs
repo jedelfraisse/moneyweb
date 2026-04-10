@@ -1,3 +1,4 @@
+using Dapper;
 using FluentMigrator.Runner;
 using Microsoft.Extensions.DependencyInjection;
 using MoneyWeb.Data.Repositories;
@@ -10,6 +11,8 @@ public static class DataServiceExtensions
 {
     public static IServiceCollection AddMoneyWebData(this IServiceCollection services, string connectionString)
     {
+        // Teach Dapper how to handle DateOnly
+        SqlMapper.AddTypeHandler(new DateOnlyTypeHandler());
         // Repositories
         services.AddScoped<IDebtRepository>(_ => new DebtRepository(connectionString));
         services.AddScoped<IBillRepository>(_ => new BillRepository(connectionString));
