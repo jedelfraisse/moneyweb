@@ -9,8 +9,7 @@ public class SignOutModel : PageModel
 {
     public async Task<IActionResult> OnGetAsync()
     {
-        // Sign out of the local cookie only — no Azure redirect.
         await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-        return LocalRedirect("/");
+        return LocalRedirect("/signed-out");
     }
 }
