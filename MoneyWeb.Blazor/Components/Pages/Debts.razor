@@ -1,180 +1,351 @@
 @page "/debts"
-@rendermode InteractiveServer
+@using MoneyWeb.Blazor.Services
+@using MoneyWeb.Data.Models
+@using MoneyWeb.Data.Repositories.Interfaces
+@using MoneyWeb.Data.Services
 @attribute [Authorize]
+@inject CurrentUserService CurrentUserService
 @inject IDebtRepository DebtRepo
-@inject CurrentUserService CurrentUserSvc
-@inject NavigationManager Navigation
+@inject IDebtGroupRepository GroupRepo
+@inject IBankAccountRepository AccountRepo
+@inject DebtPayoffService PayoffSvc
 
-<PageTitle>Debts</PageTitle>
+<PageTitle>Debts – MoneyWeb</PageTitle>
 
 <div class="d-flex justify-content-between align-items-center mb-3">
-    <h1 class="h3 mb-0">Debts</h1>
-    <button class="btn btn-primary" @onclick="OpenAddModal">
-        <i class="bi bi-plus-lg"></i> Add Debt
-    </button>
+    <h1 class="mb-0">Debts</h1>
+    <div>
+        <button class="btn btn-outline-secondary me-2" @onclick="OpenAddGroup">New Group</button>
+        <button class="btn btn-primary" @onclick="() => OpenAddDebt(null)">Add Debt</button>
+    </div>
 </div>
 
 @if (_loading)
 {
-    <div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>
-}
-else if (!_debts.Any())
-{
-    <div class="alert alert-info">No debts found. Add one to get started.</div>
+    <p>Loading&hellip;</p>
 }
 else
 {
-    <div class="table-responsive">
-        <table class="table table-hover align-middle">
-            <thead class="table-dark">
+    @* ── Grouped debts ── *@
+    @foreach (var group in _groups)
+    {
+        var result = _payoffResults[group.Id];
+        var active = _activeStrategies[group.Id];
+        var activeResult = result.ForStrategy(active);
+        var minSum = group.Debts.Sum(d => d.MinimumPayment);
+        var overBudget = minSum > group.MonthlyBudget;
+
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <div>
+                    <strong>@group.Name</strong>
+                    @if (group.BankAccount is not null)
+                    {
+                        <span class="badge bg-secondary ms-2">@group.BankAccount.Name</span>
+                    }
+                    <span class="ms-2 text-muted small">Budget: @group.MonthlyBudget.ToString("C")/mo</span>
+                    @if (overBudget)
+                    {
+                        <span class="badge bg-danger ms-2" title="Minimum payments exceed budget">
+                            Budget short @((minSum - group.MonthlyBudget).ToString("C"))
+                        </span>
+                    }
+                </div>
+                <div class="d-flex gap-2 align-items-center">
+                    <select class="form-select form-select-sm" style="width:auto"
+                            value="@active"
+                            @onchange="e => ChangeStrategy(group.Id, Enum.Parse<PayoffStrategy>(e.Value!.ToString()!))">
+                        <option value="@PayoffStrategy.Avalanche">Avalanche</option>
+                        <option value="@PayoffStrategy.Snowball">Snowball</option>
+                        <option value="@PayoffStrategy.Custom">Custom</option>
+                    </select>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => OpenEditGroup(group)">Edit</button>
+                    <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDeleteGroup(group)">Delete</button>
+                    <button class="btn btn-sm btn-outline-primary" @onclick="() => OpenAddDebt(group.Id)">+ Debt</button>
+                </div>
+            </div>
+
+            @* Strategy comparison *@
+            <div class="card-body border-bottom pb-2">
+                <table class="table table-sm mb-0">
+                    <thead>
+                        <tr>
+                            <th></th>
+                            <th class="text-end @(active == PayoffStrategy.Avalanche ? "text-primary fw-bold" : "")">Avalanche</th>
+                            <th class="text-end @(active == PayoffStrategy.Snowball  ? "text-primary fw-bold" : "")">Snowball</th>
+                            <th class="text-end @(active == PayoffStrategy.Custom    ? "text-primary fw-bold" : "")">Custom</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="text-muted small">Total interest</td>
+                            <td class="text-end @(active == PayoffStrategy.Avalanche ? "fw-bold" : "")">@result.Avalanche.TotalInterestPaid.ToString("C")</td>
+                            <td class="text-end @(active == PayoffStrategy.Snowball  ? "fw-bold" : "")">@result.Snowball.TotalInterestPaid.ToString("C")</td>
+                            <td class="text-end @(active == PayoffStrategy.Custom    ? "fw-bold" : "")">@result.Custom.TotalInterestPaid.ToString("C")</td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted small">Debt-free date</td>
+                            <td class="text-end @(active == PayoffStrategy.Avalanche ? "fw-bold" : "")">@result.Avalanche.PayoffDate.ToString("MMM yyyy")</td>
+                            <td class="text-end @(active == PayoffStrategy.Snowball  ? "fw-bold" : "")">@result.Snowball.PayoffDate.ToString("MMM yyyy")</td>
+                            <td class="text-end @(active == PayoffStrategy.Custom    ? "fw-bold" : "")">@result.Custom.PayoffDate.ToString("MMM yyyy")</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            @* Debt rows *@
+            @if (group.Debts.Any())
+            {
+                <div class="card-body p-0">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>Debt</th>
+                                <th>Lender</th>
+                                <th class="text-end">Balance</th>
+                                <th class="text-end">Rate</th>
+                                <th class="text-end">Min Payment</th>
+                                <th class="text-end">Payoff (@active)</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var debt in group.Debts.OrderBy(d => d.GroupSortOrder).ThenBy(d => d.Balance))
+                            {
+                                var payoffDate = activeResult.DebtPayoffDates.TryGetValue(debt.Id, out var d) ? d : (DateOnly?)null;
+                                <tr>
+                                    <td>@debt.Name</td>
+                                    <td class="text-muted small">@debt.Lender</td>
+                                    <td class="text-end">@debt.Balance.ToString("C")</td>
+                                    <td class="text-end">@((debt.InterestRate * 100).ToString("F2"))%</td>
+                                    <td class="text-end">@debt.MinimumPayment.ToString("C")</td>
+                                    <td class="text-end">@(payoffDate?.ToString("MMM yyyy") ?? "—")</td>
+                                    <td class="text-end text-nowrap">
+                                        <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => OpenEditDebt(debt)">Edit</button>
+                                        <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDeleteDebt(debt)">Delete</button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                        <tfoot>
+                            <tr class="fw-bold">
+                                <td colspan="2">Group Total</td>
+                                <td class="text-end">@group.Debts.Sum(d => d.Balance).ToString("C")</td>
+                                <td></td>
+                                <td class="text-end">@group.Debts.Sum(d => d.MinimumPayment).ToString("C")</td>
+                                <td colspan="2"></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            }
+            else
+            {
+                <div class="card-body text-muted small">No debts in this group yet.</div>
+            }
+        </div>
+    }
+
+    @* ── Ungrouped debts ── *@
+    @if (_ungrouped.Any())
+    {
+        <h2 class="h5">Ungrouped Debts</h2>
+        <table class="table table-hover">
+            <thead>
                 <tr>
-                    <th>Name</th>
+                    <th>Debt</th>
                     <th>Lender</th>
                     <th class="text-end">Balance</th>
-                    <th class="text-end">APR</th>
+                    <th class="text-end">Rate</th>
                     <th class="text-end">Min Payment</th>
-                    <th>Payoff Date</th>
-                    <th class="text-center">Active</th>
                     <th></th>
                 </tr>
             </thead>
             <tbody>
-                @foreach (var debt in _debts)
+                @foreach (var debt in _ungrouped)
                 {
                     <tr>
                         <td>@debt.Name</td>
-                        <td class="text-muted">@debt.Lender</td>
+                        <td class="text-muted small">@debt.Lender</td>
                         <td class="text-end">@debt.Balance.ToString("C")</td>
                         <td class="text-end">@((debt.InterestRate * 100).ToString("F2"))%</td>
                         <td class="text-end">@debt.MinimumPayment.ToString("C")</td>
-                        <td>@(debt.PayoffDate?.ToString("MMM d, yyyy") ?? "—")</td>
-                        <td class="text-center">
-                            @if (debt.IsActive)
-                            {
-                                <span class="badge bg-success">Active</span>
-                            }
-                            else
-                            {
-                                <span class="badge bg-secondary">Inactive</span>
-                            }
-                        </td>
                         <td class="text-end text-nowrap">
-                            <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => OpenEditModal(debt)">
-                                <i class="bi bi-pencil"></i>
-                            </button>
-                            <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(debt)">
-                                <i class="bi bi-trash"></i>
-                            </button>
+                            <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => OpenEditDebt(debt)">Edit</button>
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDeleteDebt(debt)">Delete</button>
                         </td>
                     </tr>
                 }
             </tbody>
-            <tfoot class="table-secondary fw-bold">
-                <tr>
-                    <td colspan="2">Totals</td>
-                    <td class="text-end">@_debts.Where(d => d.IsActive).Sum(d => d.Balance).ToString("C")</td>
+            <tfoot>
+                <tr class="fw-bold">
+                    <td colspan="2">Ungrouped Total</td>
+                    <td class="text-end">@_ungrouped.Sum(d => d.Balance).ToString("C")</td>
                     <td></td>
-                    <td class="text-end">@_debts.Where(d => d.IsActive).Sum(d => d.MinimumPayment).ToString("C")</td>
-                    <td colspan="3"></td>
+                    <td class="text-end">@_ungrouped.Sum(d => d.MinimumPayment).ToString("C")</td>
+                    <td></td>
                 </tr>
             </tfoot>
         </table>
-    </div>
+    }
+
+    @if (!_groups.Any() && !_ungrouped.Any())
+    {
+        <p class="text-muted">No debts yet. Add a group or a standalone debt to get started.</p>
+    }
 }
 
-@if (!string.IsNullOrEmpty(_errorMessage))
+@* ── Group Modal ── *@
+@if (_showGroupModal)
 {
-    <div class="alert alert-danger mt-3">@_errorMessage</div>
-}
-
-<!-- Add / Edit Modal -->
-@if (_showFormModal)
-{
-    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.5)">
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.4)">
         <div class="modal-dialog">
             <div class="modal-content">
-                <EditForm Model="_form" OnValidSubmit="SaveDebt">
-                    <DataAnnotationsValidator />
-                    <div class="modal-header">
-                        <h5 class="modal-title">@(_isEditing ? "Edit Debt" : "Add Debt")</h5>
-                        <button type="button" class="btn-close" @onclick="CloseModal"></button>
+                <div class="modal-header">
+                    <h5 class="modal-title">@(_editingGroup.Id == 0 ? "New" : "Edit") Debt Group</h5>
+                    <button type="button" class="btn-close" @onclick="CloseGroupModal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Group Name</label>
+                        <input class="form-control" @bind="_editingGroup.Name" />
                     </div>
-                    <div class="modal-body">
-                        <div class="mb-3">
-                            <label class="form-label">Name <span class="text-danger">*</span></label>
-                            <InputText class="form-control" @bind-Value="_form.Name" />
-                            <ValidationMessage For="() => _form.Name" class="text-danger small" />
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Lender</label>
-                            <InputText class="form-control" @bind-Value="_form.Lender" />
-                        </div>
-                        <div class="row">
-                            <div class="col mb-3">
-                                <label class="form-label">Balance <span class="text-danger">*</span></label>
-                                <div class="input-group">
-                                    <span class="input-group-text">$</span>
-                                    <InputNumber class="form-control" @bind-Value="_form.Balance" />
-                                </div>
-                                <ValidationMessage For="() => _form.Balance" class="text-danger small" />
-                            </div>
-                            <div class="col mb-3">
-                                <label class="form-label">APR % <span class="text-danger">*</span></label>
-                                <div class="input-group">
-                                    <InputNumber class="form-control" @bind-Value="_form.InterestRatePercent" />
-                                    <span class="input-group-text">%</span>
-                                </div>
-                                <ValidationMessage For="() => _form.InterestRatePercent" class="text-danger small" />
-                            </div>
-                        </div>
-                        <div class="row">
-                            <div class="col mb-3">
-                                <label class="form-label">Minimum Payment <span class="text-danger">*</span></label>
-                                <div class="input-group">
-                                    <span class="input-group-text">$</span>
-                                    <InputNumber class="form-control" @bind-Value="_form.MinimumPayment" />
-                                </div>
-                                <ValidationMessage For="() => _form.MinimumPayment" class="text-danger small" />
-                            </div>
-                            <div class="col mb-3">
-                                <label class="form-label">Payoff Date</label>
-                                <InputDate class="form-control" @bind-Value="_form.PayoffDate" />
-                            </div>
-                        </div>
-                        <div class="form-check">
-                            <InputCheckbox class="form-check-input" @bind-Value="_form.IsActive" id="isActiveCheck" />
-                            <label class="form-check-label" for="isActiveCheck">Active</label>
-                        </div>
+                    <div class="mb-3">
+                        <label class="form-label">Bank Account (optional)</label>
+                        <select class="form-select" @bind="_editingGroup.BankAccountId">
+                            <option value="">— None —</option>
+                            @foreach (var acct in _bankAccounts)
+                            {
+                                <option value="@acct.Id">@acct.Name (@acct.AccountType)</option>
+                            }
+                        </select>
                     </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" @onclick="CloseModal">Cancel</button>
-                        <button type="submit" class="btn btn-primary" disabled="@_saving">
-                            @if (_saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
-                            Save
-                        </button>
+                    <div class="mb-3">
+                        <label class="form-label">Monthly Budget</label>
+                        <input class="form-control" type="number" step="0.01" @bind="_editingGroup.MonthlyBudget" />
                     </div>
-                </EditForm>
+                    <div class="mb-3">
+                        <label class="form-label">Default Strategy</label>
+                        <select class="form-select" @bind="_editingGroup.Strategy">
+                            <option value="@PayoffStrategy.Avalanche">Avalanche (highest interest first)</option>
+                            <option value="@PayoffStrategy.Snowball">Snowball (smallest balance first)</option>
+                            <option value="@PayoffStrategy.Custom">Custom order</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Notes</label>
+                        <textarea class="form-control" rows="2" @bind="_editingGroup.Notes"></textarea>
+                    </div>
+                    @if (_groupError is not null)
+                    {
+                        <div class="alert alert-danger">@_groupError</div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CloseGroupModal">Cancel</button>
+                    <button class="btn btn-primary" @onclick="SaveGroup">Save</button>
+                </div>
             </div>
         </div>
     </div>
 }
 
-<!-- Delete Confirm Modal -->
-@if (_debtToDelete is not null)
+@* ── Debt Modal ── *@
+@if (_showDebtModal)
 {
-    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.5)">
-        <div class="modal-dialog modal-sm">
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.4)">
+        <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title">Delete Debt</h5>
-                    <button type="button" class="btn-close" @onclick="() => _debtToDelete = null"></button>
+                    <h5 class="modal-title">@(_editingDebt.Id == 0 ? "Add" : "Edit") Debt</h5>
+                    <button type="button" class="btn-close" @onclick="CloseDebtModal"></button>
                 </div>
                 <div class="modal-body">
-                    Are you sure you want to delete <strong>@_debtToDelete.Name</strong>?
+                    <div class="mb-3">
+                        <label class="form-label">Name</label>
+                        <input class="form-control" @bind="_editingDebt.Name" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Lender</label>
+                        <input class="form-control" @bind="_editingDebt.Lender" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Balance</label>
+                        <input class="form-control" type="number" step="0.01" @bind="_editingDebt.Balance" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Interest Rate (%)</label>
+                        <input class="form-control" type="number" step="0.01"
+                               value="@(_editingDebt.InterestRate * 100)"
+                               @onchange="e => _editingDebt.InterestRate = decimal.Parse(e.Value!.ToString()!) / 100m" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Minimum Payment</label>
+                        <input class="form-control" type="number" step="0.01" @bind="_editingDebt.MinimumPayment" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Group (optional)</label>
+                        <select class="form-select" @bind="_editingDebt.GroupId">
+                            <option value="">— Ungrouped —</option>
+                            @foreach (var g in _groups)
+                            {
+                                <option value="@g.Id">@g.Name</option>
+                            }
+                        </select>
+                    </div>
+                    @if (_editingDebt.GroupId.HasValue)
+                    {
+                        <div class="mb-3">
+                            <label class="form-label">Sort Order (for Custom strategy)</label>
+                            <input class="form-control" type="number" @bind="_editingDebt.GroupSortOrder" />
+                        </div>
+                    }
+                    @if (_debtError is not null)
+                    {
+                        <div class="alert alert-danger">@_debtError</div>
+                    }
                 </div>
                 <div class="modal-footer">
-                    <button class="btn btn-secondary" @onclick="() => _debtToDelete = null">Cancel</button>
-                    <button class="btn btn-danger" @onclick="DeleteDebt">Delete</button>
+                    <button class="btn btn-secondary" @onclick="CloseDebtModal">Cancel</button>
+                    <button class="btn btn-primary" @onclick="SaveDebt">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ── Delete Confirm Modals ── *@
+@if (_deleteGroupTarget is not null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.4)">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header"><h5 class="modal-title">Delete Group</h5></div>
+                <div class="modal-body">
+                    <p>Delete group <strong>@_deleteGroupTarget.Name</strong>?</p>
+                    <p class="text-muted small">Debts in this group will become ungrouped — they will not be deleted.</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="() => _deleteGroupTarget = null">Cancel</button>
+                    <button class="btn btn-danger" @onclick="DeleteGroupConfirmed">Delete Group</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_deleteDebtTarget is not null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.4)">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header"><h5 class="modal-title">Delete Debt</h5></div>
+                <div class="modal-body">
+                    <p>Delete <strong>@_deleteDebtTarget.Name</strong>? This cannot be undone.</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="() => _deleteDebtTarget = null">Cancel</button>
+                    <button class="btn btn-danger" @onclick="DeleteDebtConfirmed">Delete</button>
                 </div>
             </div>
         </div>
@@ -182,145 +353,145 @@ else
 }
 
 @code {
-    private List<Debt> _debts = [];
     private bool _loading = true;
-    private bool _saving;
-    private bool _showFormModal;
-    private bool _isEditing;
-    private string? _errorMessage;
-    private Debt? _debtToDelete;
-    private DebtFormModel _form = new();
     private int _userId;
+
+    private List<DebtGroup> _groups = [];
+    private List<Debt> _ungrouped = [];
+    private List<BankAccount> _bankAccounts = [];
+    private Dictionary<int, DebtPayoffResult> _payoffResults = [];
+    private Dictionary<int, PayoffStrategy> _activeStrategies = [];
+
+    // Group modal
+    private bool _showGroupModal;
+    private DebtGroup _editingGroup = new();
+    private string? _groupError;
+    private DebtGroup? _deleteGroupTarget;
+
+    // Debt modal
+    private bool _showDebtModal;
+    private Debt _editingDebt = new();
+    private string? _debtError;
+    private Debt? _deleteDebtTarget;
 
     protected override async Task OnInitializedAsync()
     {
-        var user = await CurrentUserSvc.GetCurrentUserAsync();
-        if (user is null || !user.IsApproved)
-        {
-            Navigation.NavigateTo("/pending-approval", forceLoad: true);
-            return;
-        }
+        var user = await CurrentUserService.GetCurrentUserAsync();
+        if (user?.IsApproved != true) return;
         _userId = user.Id;
-        await LoadDebts();
+        await LoadAsync();
     }
 
-    private async Task LoadDebts()
+    private async Task LoadAsync()
     {
-        _loading = true;
-        _debts = (await DebtRepo.GetAllAsync(_userId, activeOnly: false)).ToList();
+        _bankAccounts = (await AccountRepo.GetAllAsync(_userId)).ToList();
+
+        _groups = (await GroupRepo.GetAllWithDebtsAsync(_userId)).ToList();
+
+        _payoffResults = _groups.ToDictionary(
+            g => g.Id,
+            g => PayoffSvc.Calculate(g.Debts, g.MonthlyBudget));
+
+        // Preserve active strategy selection across reloads
+        foreach (var g in _groups)
+            _activeStrategies.TryAdd(g.Id, g.Strategy);
+
+        var allDebts = (await DebtRepo.GetAllAsync(_userId, activeOnly: true)).ToList();
+        _ungrouped = allDebts.Where(d => d.GroupId is null).ToList();
+
         _loading = false;
     }
 
-    private void OpenAddModal()
+    private void ChangeStrategy(int groupId, PayoffStrategy strategy) =>
+        _activeStrategies[groupId] = strategy;
+
+    // ── Group CRUD ──────────────────────────────────────────────
+    private void OpenAddGroup()
     {
-        _form = new DebtFormModel { IsActive = true };
-        _isEditing = false;
-        _showFormModal = true;
-        _errorMessage = null;
+        _editingGroup = new DebtGroup { UserId = _userId };
+        _groupError = null;
+        _showGroupModal = true;
     }
 
-    private void OpenEditModal(Debt debt)
+    private void OpenEditGroup(DebtGroup g)
     {
-        _form = new DebtFormModel
+        _editingGroup = new DebtGroup
         {
-            Id = debt.Id,
-            Name = debt.Name,
-            Lender = debt.Lender,
-            Balance = debt.Balance,
-            InterestRatePercent = debt.InterestRate * 100,
-            MinimumPayment = debt.MinimumPayment,
-            PayoffDate = debt.PayoffDate,
-            IsActive = debt.IsActive
+            Id = g.Id, UserId = g.UserId, Name = g.Name,
+            BankAccountId = g.BankAccountId, Strategy = g.Strategy,
+            MonthlyBudget = g.MonthlyBudget, Notes = g.Notes
         };
-        _isEditing = true;
-        _showFormModal = true;
-        _errorMessage = null;
+        _groupError = null;
+        _showGroupModal = true;
     }
 
-    private void CloseModal()
+    private void CloseGroupModal() => _showGroupModal = false;
+
+    private async Task SaveGroup()
     {
-        _showFormModal = false;
-        _errorMessage = null;
+        if (string.IsNullOrWhiteSpace(_editingGroup.Name)) { _groupError = "Name is required."; return; }
+        _editingGroup.UserId = _userId;
+        if (_editingGroup.Id == 0)
+            await GroupRepo.CreateAsync(_editingGroup);
+        else
+            await GroupRepo.UpdateAsync(_editingGroup);
+        _showGroupModal = false;
+        await LoadAsync();
     }
+
+    private void ConfirmDeleteGroup(DebtGroup g) => _deleteGroupTarget = g;
+
+    private async Task DeleteGroupConfirmed()
+    {
+        if (_deleteGroupTarget is null) return;
+        await GroupRepo.DeleteAsync(_deleteGroupTarget.Id, _userId);
+        _deleteGroupTarget = null;
+        await LoadAsync();
+    }
+
+    // ── Debt CRUD ────────────────────────────────────────────────
+    private void OpenAddDebt(int? groupId)
+    {
+        _editingDebt = new Debt { UserId = _userId, GroupId = groupId, IsActive = true };
+        _debtError = null;
+        _showDebtModal = true;
+    }
+
+    private void OpenEditDebt(Debt d)
+    {
+        _editingDebt = new Debt
+        {
+            Id = d.Id, UserId = d.UserId, GroupId = d.GroupId, GroupSortOrder = d.GroupSortOrder,
+            Name = d.Name, Lender = d.Lender, Balance = d.Balance,
+            InterestRate = d.InterestRate, MinimumPayment = d.MinimumPayment,
+            PayoffDate = d.PayoffDate, IsActive = d.IsActive
+        };
+        _debtError = null;
+        _showDebtModal = true;
+    }
+
+    private void CloseDebtModal() => _showDebtModal = false;
 
     private async Task SaveDebt()
     {
-        _saving = true;
-        _errorMessage = null;
-        try
-        {
-            var debt = new Debt
-            {
-                Id = _form.Id,
-                UserId = _userId,
-                Name = _form.Name,
-                Lender = string.IsNullOrWhiteSpace(_form.Lender) ? null : _form.Lender,
-                Balance = _form.Balance,
-                InterestRate = _form.InterestRatePercent / 100,
-                MinimumPayment = _form.MinimumPayment,
-                PayoffDate = _form.PayoffDate,
-                IsActive = _form.IsActive
-            };
-
-            if (_isEditing)
-                await DebtRepo.UpdateAsync(debt);
-            else
-                await DebtRepo.CreateAsync(debt);
-
-            _showFormModal = false;
-            await LoadDebts();
-        }
-        catch (Exception ex)
-        {
-            _errorMessage = $"Failed to save: {ex.Message}";
-        }
-        finally
-        {
-            _saving = false;
-        }
+        if (string.IsNullOrWhiteSpace(_editingDebt.Name)) { _debtError = "Name is required."; return; }
+        if (_editingDebt.Balance < 0) { _debtError = "Balance cannot be negative."; return; }
+        _editingDebt.UserId = _userId;
+        if (_editingDebt.Id == 0)
+            await DebtRepo.CreateAsync(_editingDebt);
+        else
+            await DebtRepo.UpdateAsync(_editingDebt);
+        _showDebtModal = false;
+        await LoadAsync();
     }
 
-    private void ConfirmDelete(Debt debt)
+    private void ConfirmDeleteDebt(Debt d) => _deleteDebtTarget = d;
+
+    private async Task DeleteDebtConfirmed()
     {
-        _debtToDelete = debt;
-        _errorMessage = null;
-    }
-
-    private async Task DeleteDebt()
-    {
-        if (_debtToDelete is null) return;
-        try
-        {
-            await DebtRepo.DeleteAsync(_debtToDelete.Id, _userId);
-            _debtToDelete = null;
-            await LoadDebts();
-        }
-        catch (Exception ex)
-        {
-            _errorMessage = $"Failed to delete: {ex.Message}";
-            _debtToDelete = null;
-        }
-    }
-
-    private class DebtFormModel
-    {
-        [System.ComponentModel.DataAnnotations.Required]
-        [System.ComponentModel.DataAnnotations.StringLength(200)]
-        public string Name { get; set; } = string.Empty;
-
-        public string? Lender { get; set; }
-
-        [System.ComponentModel.DataAnnotations.Range(0.01, double.MaxValue, ErrorMessage = "Balance must be greater than 0")]
-        public decimal Balance { get; set; }
-
-        [System.ComponentModel.DataAnnotations.Range(0, 100, ErrorMessage = "APR must be between 0 and 100")]
-        public decimal InterestRatePercent { get; set; }
-
-        [System.ComponentModel.DataAnnotations.Range(0.01, double.MaxValue, ErrorMessage = "Minimum payment must be greater than 0")]
-        public decimal MinimumPayment { get; set; }
-
-        public DateOnly? PayoffDate { get; set; }
-        public bool IsActive { get; set; } = true;
-        public int Id { get; set; }
+        if (_deleteDebtTarget is null) return;
+        await DebtRepo.DeleteAsync(_deleteDebtTarget.Id, _userId);
+        _deleteDebtTarget = null;
+        await LoadAsync();
     }
 }

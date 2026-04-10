@@ -29,9 +29,9 @@ public class DebtRepository(string connectionString) : IDebtRepository
     {
         using var conn = Connect();
         var sql = """
-            INSERT INTO Debts (Name, Lender, Balance, InterestRate, MinimumPayment, PayoffDate, IsActive, CreatedAt, UpdatedAt)
+            INSERT INTO Debts (UserId, GroupId, GroupSortOrder, Name, Lender, Balance, InterestRate, MinimumPayment, PayoffDate, IsActive, CreatedAt, UpdatedAt)
             OUTPUT INSERTED.Id
-            VALUES (@Name, @Lender, @Balance, @InterestRate, @MinimumPayment, @PayoffDate, @IsActive, GETUTCDATE(), GETUTCDATE())
+            VALUES (@UserId, @GroupId, @GroupSortOrder, @Name, @Lender, @Balance, @InterestRate, @MinimumPayment, @PayoffDate, @IsActive, GETUTCDATE(), GETUTCDATE())
             """;
         return await conn.ExecuteScalarAsync<int>(sql, debt);
     }
@@ -41,10 +41,11 @@ public class DebtRepository(string connectionString) : IDebtRepository
         using var conn = Connect();
         var sql = """
             UPDATE Debts SET
+                GroupId = @GroupId, GroupSortOrder = @GroupSortOrder,
                 Name = @Name, Lender = @Lender, Balance = @Balance,
                 InterestRate = @InterestRate, MinimumPayment = @MinimumPayment,
                 PayoffDate = @PayoffDate, IsActive = @IsActive, UpdatedAt = GETUTCDATE()
-            WHERE Id = @Id
+            WHERE Id = @Id AND UserId = @UserId
             """;
         await conn.ExecuteAsync(sql, debt);
     }

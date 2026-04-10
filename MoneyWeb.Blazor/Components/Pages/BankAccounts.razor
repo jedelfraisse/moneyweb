@@ -1,0 +1,191 @@
+@page "/bank-accounts"
+@using MoneyWeb.Blazor.Services
+@using MoneyWeb.Data.Models
+@using MoneyWeb.Data.Repositories.Interfaces
+@attribute [Authorize]
+@inject CurrentUserService CurrentUserService
+@inject IBankAccountRepository AccountRepo
+
+<PageTitle>Bank Accounts – MoneyWeb</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="mb-0">Bank Accounts</h1>
+    <button class="btn btn-primary" @onclick="OpenAdd">Add Account</button>
+</div>
+
+@if (_loading)
+{
+    <p>Loading&hellip;</p>
+}
+else if (!_accounts.Any())
+{
+    <p class="text-muted">No bank accounts yet. Add one to get started.</p>
+}
+else
+{
+    <table class="table table-hover">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Type</th>
+                <th class="text-end">Current Balance</th>
+                <th>Notes</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var acct in _accounts)
+            {
+                <tr>
+                    <td>@acct.Name</td>
+                    <td>@acct.AccountType</td>
+                    <td class="text-end">@acct.CurrentBalance.ToString("C")</td>
+                    <td class="text-muted small">@acct.Notes</td>
+                    <td class="text-end text-nowrap">
+                        <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => OpenEdit(acct)">Edit</button>
+                        <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(acct)">Delete</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+        <tfoot>
+            <tr class="fw-bold">
+                <td colspan="2">Total</td>
+                <td class="text-end">@_accounts.Sum(a => a.CurrentBalance).ToString("C")</td>
+                <td colspan="2"></td>
+            </tr>
+        </tfoot>
+    </table>
+}
+
+@* ── Add / Edit Modal ── *@
+@if (_showModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.4)">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@(_editing.Id == 0 ? "Add" : "Edit") Account</h5>
+                    <button type="button" class="btn-close" @onclick="CloseModal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Name</label>
+                        <input class="form-control" @bind="_editing.Name" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Type</label>
+                        <select class="form-select" @bind="_editing.AccountType">
+                            @foreach (var t in Enum.GetValues<AccountType>())
+                            {
+                                <option value="@t">@t</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Current Balance</label>
+                        <input class="form-control" type="number" step="0.01" @bind="_editing.CurrentBalance" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Notes</label>
+                        <textarea class="form-control" rows="2" @bind="_editing.Notes"></textarea>
+                    </div>
+                    @if (_error is not null)
+                    {
+                        <div class="alert alert-danger">@_error</div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CloseModal">Cancel</button>
+                    <button class="btn btn-primary" @onclick="Save">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ── Delete Confirm Modal ── *@
+@if (_deleteTarget is not null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.4)">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header"><h5 class="modal-title">Delete Account</h5></div>
+                <div class="modal-body">
+                    <p>Delete <strong>@_deleteTarget.Name</strong>? This cannot be undone.</p>
+                    <p class="text-muted small">Any debt groups linked to this account will become unlinked.</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="() => _deleteTarget = null">Cancel</button>
+                    <button class="btn btn-danger" @onclick="DeleteConfirmed">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _loading = true;
+    private List<BankAccount> _accounts = [];
+    private bool _showModal;
+    private BankAccount _editing = new();
+    private BankAccount? _deleteTarget;
+    private string? _error;
+    private int _userId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = await CurrentUserService.GetCurrentUserAsync();
+        if (user?.IsApproved != true) return;
+        _userId = user.Id;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _accounts = (await AccountRepo.GetAllAsync(_userId)).ToList();
+        _loading = false;
+    }
+
+    private void OpenAdd()
+    {
+        _editing = new BankAccount { UserId = _userId };
+        _error = null;
+        _showModal = true;
+    }
+
+    private void OpenEdit(BankAccount acct)
+    {
+        _editing = new BankAccount
+        {
+            Id = acct.Id, UserId = acct.UserId, Name = acct.Name,
+            AccountType = acct.AccountType, CurrentBalance = acct.CurrentBalance, Notes = acct.Notes
+        };
+        _error = null;
+        _showModal = true;
+    }
+
+    private void CloseModal() => _showModal = false;
+
+    private async Task Save()
+    {
+        if (string.IsNullOrWhiteSpace(_editing.Name)) { _error = "Name is required."; return; }
+        _editing.UserId = _userId;
+        if (_editing.Id == 0)
+            await AccountRepo.CreateAsync(_editing);
+        else
+            await AccountRepo.UpdateAsync(_editing);
+        _showModal = false;
+        await LoadAsync();
+    }
+
+    private void ConfirmDelete(BankAccount acct) => _deleteTarget = acct;
+
+    private async Task DeleteConfirmed()
+    {
+        if (_deleteTarget is null) return;
+        await AccountRepo.DeleteAsync(_deleteTarget.Id, _userId);
+        _deleteTarget = null;
+        await LoadAsync();
+    }
+}

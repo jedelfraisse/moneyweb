@@ -2,6 +2,7 @@ using FluentMigrator.Runner;
 using Microsoft.Extensions.DependencyInjection;
 using MoneyWeb.Data.Repositories;
 using MoneyWeb.Data.Repositories.Interfaces;
+using MoneyWeb.Data.Services;
 
 namespace MoneyWeb.Data;
 
@@ -14,6 +15,11 @@ public static class DataServiceExtensions
         services.AddScoped<IBillRepository>(_ => new BillRepository(connectionString));
         services.AddScoped<ILoanRepository>(_ => new LoanRepository(connectionString));
         services.AddScoped<IUserRepository>(_ => new UserRepository(connectionString));
+        services.AddScoped<IBankAccountRepository>(_ => new BankAccountRepository(connectionString));
+        services.AddScoped<IDebtGroupRepository>(_ => new DebtGroupRepository(connectionString));
+
+        // Services
+        services.AddSingleton<DebtPayoffService>();
 
         // FluentMigrator
         services.AddFluentMigratorCore()
