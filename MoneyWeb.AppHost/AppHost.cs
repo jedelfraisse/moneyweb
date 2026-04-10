@@ -1,10 +1,8 @@
 var builder = DistributedApplication.CreateBuilder(args);
 
-var sql = builder.AddSqlServer("sql")
-                 .AddDatabase("moneyweb");
+var sql = builder.AddConnectionString("moneyweb");
 
 builder.AddProject<Projects.MoneyWeb_Blazor>("moneyweb-blazor")
-       .WithReference(sql)
-       .WaitFor(sql);
+       .WithReference(sql);
 
 builder.Build().Run();
