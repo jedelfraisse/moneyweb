@@ -33,10 +33,17 @@ public class UserRepository(string connectionString) : IUserRepository
     public async Task<int> CreateAsync(User user)
     {
         using var conn = Connect();
+        // MERGE guards against the race condition where multiple concurrent requests
+        // (HTTP pipeline + Blazor circuit) both attempt to provision the same user.
         var sql = """
-            INSERT INTO Users (EntraObjectId, Email, DisplayName, IsApproved, IsAdmin, CreatedAt)
-            OUTPUT INSERTED.Id
-            VALUES (@EntraObjectId, @Email, @DisplayName, @IsApproved, @IsAdmin, GETUTCDATE())
+            MERGE Users AS target
+            USING (SELECT @EntraObjectId AS EntraObjectId) AS source
+                ON target.EntraObjectId = source.EntraObjectId
+            WHEN NOT MATCHED THEN
+                INSERT (EntraObjectId, Email, DisplayName, IsApproved, IsAdmin, CreatedAt)
+                VALUES (@EntraObjectId, @Email, @DisplayName, @IsApproved, @IsAdmin, GETUTCDATE());
+
+            SELECT Id FROM Users WHERE EntraObjectId = @EntraObjectId;
             """;
         return await conn.ExecuteScalarAsync<int>(sql, user);
     }
