@@ -97,10 +97,12 @@ else
             @* Debt rows *@
             @if (group.Debts.Any())
             {
+                var orderedDebts = group.Debts.OrderBy(d => d.GroupSortOrder).ThenBy(d => d.Id).ToList();
                 <div class="card-body p-0">
                     <table class="table table-hover mb-0">
                         <thead>
                             <tr>
+                                <th style="width:5rem"></th>
                                 <th>Debt</th>
                                 <th>Lender</th>
                                 <th class="text-end">Balance</th>
@@ -111,10 +113,20 @@ else
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var debt in group.Debts.OrderBy(d => d.GroupSortOrder).ThenBy(d => d.Balance))
+                            @for (int i = 0; i < orderedDebts.Count; i++)
                             {
+                                var debt = orderedDebts[i];
+                                var idx = i;
                                 var payoffDate = activeResult.DebtPayoffDates.TryGetValue(debt.Id, out var d) ? d : (DateOnly?)null;
                                 <tr>
+                                    <td class="text-nowrap">
+                                        <button class="btn btn-sm btn-outline-secondary px-1 py-0"
+                                                disabled="@(idx == 0)"
+                                                @onclick="() => MoveDebt(orderedDebts, idx, -1)">▲</button>
+                                        <button class="btn btn-sm btn-outline-secondary px-1 py-0"
+                                                disabled="@(idx == orderedDebts.Count - 1)"
+                                                @onclick="() => MoveDebt(orderedDebts, idx, 1)">▼</button>
+                                    </td>
                                     <td>@debt.Name</td>
                                     <td class="text-muted small">@debt.Lender</td>
                                     <td class="text-end">@debt.Balance.ToString("C")</td>
@@ -130,6 +142,7 @@ else
                         </tbody>
                         <tfoot>
                             <tr class="fw-bold">
+                                <td></td>
                                 <td colspan="2">Group Total</td>
                                 <td class="text-end">@group.Debts.Sum(d => d.Balance).ToString("C")</td>
                                 <td></td>
@@ -443,6 +456,23 @@ else
     }
 
     private void ConfirmDeleteGroup(DebtGroup g) => _deleteGroupTarget = g;
+
+    private async Task MoveDebt(List<Debt> ordered, int index, int direction)
+    {
+        var swapIndex = index + direction;
+        if (swapIndex < 0 || swapIndex >= ordered.Count) return;
+
+        // Normalise sort orders to sequential positions, then swap the two affected
+        for (int i = 0; i < ordered.Count; i++)
+            ordered[i].GroupSortOrder = i;
+
+        (ordered[index].GroupSortOrder, ordered[swapIndex].GroupSortOrder) =
+            (ordered[swapIndex].GroupSortOrder, ordered[index].GroupSortOrder);
+
+        await DebtRepo.UpdateAsync(ordered[index]);
+        await DebtRepo.UpdateAsync(ordered[swapIndex]);
+        await LoadAsync();
+    }
 
     private async Task DeleteGroupConfirmed()
     {
