@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
-using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
@@ -8,11 +7,10 @@ namespace MoneyWeb.Blazor.Pages.MicrosoftIdentity.Account;
 
 public class SignOutModel : PageModel
 {
-    public IActionResult OnGet()
+    public async Task<IActionResult> OnGetAsync()
     {
-        return SignOut(
-            new AuthenticationProperties { RedirectUri = "/" },
-            OpenIdConnectDefaults.AuthenticationScheme,
-            CookieAuthenticationDefaults.AuthenticationScheme);
+        // Sign out of the local cookie only — no Azure redirect.
+        await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+        return LocalRedirect("/");
     }
 }
