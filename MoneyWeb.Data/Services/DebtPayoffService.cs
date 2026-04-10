@@ -13,9 +13,10 @@ public class DebtPayoffService
 
         return new DebtPayoffResult
         {
-            Avalanche = Simulate(activeDebts, monthlyBudget, PayoffStrategy.Avalanche),
-            Snowball  = Simulate(activeDebts, monthlyBudget, PayoffStrategy.Snowball),
-            Custom    = Simulate(activeDebts, monthlyBudget, PayoffStrategy.Custom)
+            Avalanche    = Simulate(activeDebts, monthlyBudget, PayoffStrategy.Avalanche),
+            Snowball     = Simulate(activeDebts, monthlyBudget, PayoffStrategy.Snowball),
+            Custom       = Simulate(activeDebts, monthlyBudget, PayoffStrategy.Custom),
+            MinimumOnly  = Simulate(activeDebts, monthlyBudget, PayoffStrategy.MinimumOnly)
         };
     }
 
@@ -72,7 +73,7 @@ public class DebtPayoffService
             }
 
             // Apply surplus to the current focus debt (first non-zero in priority order)
-            if (budgetRemaining > 0)
+            if (budgetRemaining > 0 && strategy != PayoffStrategy.MinimumOnly)
             {
                 foreach (var debt in ordered)
                 {
@@ -110,15 +111,17 @@ public class DebtPayoffService
 
 public class DebtPayoffResult
 {
-    public StrategyResult Avalanche { get; init; } = new();
-    public StrategyResult Snowball  { get; init; } = new();
-    public StrategyResult Custom    { get; init; } = new();
+    public StrategyResult Avalanche   { get; init; } = new();
+    public StrategyResult Snowball    { get; init; } = new();
+    public StrategyResult Custom      { get; init; } = new();
+    public StrategyResult MinimumOnly { get; init; } = new();
 
     public StrategyResult ForStrategy(PayoffStrategy s) => s switch
     {
-        PayoffStrategy.Snowball => Snowball,
-        PayoffStrategy.Custom   => Custom,
-        _                       => Avalanche
+        PayoffStrategy.Snowball    => Snowball,
+        PayoffStrategy.Custom      => Custom,
+        PayoffStrategy.MinimumOnly => MinimumOnly,
+        _                          => Avalanche
     };
 }
 

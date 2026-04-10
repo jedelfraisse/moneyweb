@@ -19,7 +19,8 @@ public class DebtGroup
 
 public enum PayoffStrategy
 {
-    Avalanche = 0,  // highest interest rate first
-    Snowball  = 1,  // smallest balance first
-    Custom    = 2   // user-defined sort order
+    Avalanche   = 0,  // highest interest rate first
+    Snowball    = 1,  // smallest balance first
+    Custom      = 2,  // user-defined sort order
+    MinimumOnly = 3   // pay minimums only, no rollover
 }

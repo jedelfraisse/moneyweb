@@ -59,6 +59,7 @@ else
                         <option value="@PayoffStrategy.Avalanche">Avalanche</option>
                         <option value="@PayoffStrategy.Snowball">Snowball</option>
                         <option value="@PayoffStrategy.Custom">Custom</option>
+                        <option value="@PayoffStrategy.MinimumOnly">Min Only</option>
                     </select>
                     <button class="btn btn-sm btn-outline-secondary" @onclick="() => OpenEditGroup(group)">Edit</button>
                     <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDeleteGroup(group)">Delete</button>
@@ -72,23 +73,26 @@ else
                     <thead>
                         <tr>
                             <th></th>
-                            <th class="text-end @(active == PayoffStrategy.Avalanche ? "text-primary fw-bold" : "")">Avalanche</th>
-                            <th class="text-end @(active == PayoffStrategy.Snowball  ? "text-primary fw-bold" : "")">Snowball</th>
-                            <th class="text-end @(active == PayoffStrategy.Custom    ? "text-primary fw-bold" : "")">Custom</th>
+                            <th class="text-end @(active == PayoffStrategy.Avalanche    ? "text-primary fw-bold" : "")">Avalanche</th>
+                            <th class="text-end @(active == PayoffStrategy.Snowball     ? "text-primary fw-bold" : "")">Snowball</th>
+                            <th class="text-end @(active == PayoffStrategy.Custom       ? "text-primary fw-bold" : "")">Custom</th>
+                            <th class="text-end @(active == PayoffStrategy.MinimumOnly  ? "text-primary fw-bold" : "")">Min Only</th>
                         </tr>
                     </thead>
                     <tbody>
                         <tr>
                             <td class="text-muted small">Total interest</td>
-                            <td class="text-end @(active == PayoffStrategy.Avalanche ? "fw-bold" : "")">@result.Avalanche.TotalInterestPaid.ToString("C")</td>
-                            <td class="text-end @(active == PayoffStrategy.Snowball  ? "fw-bold" : "")">@result.Snowball.TotalInterestPaid.ToString("C")</td>
-                            <td class="text-end @(active == PayoffStrategy.Custom    ? "fw-bold" : "")">@result.Custom.TotalInterestPaid.ToString("C")</td>
+                            <td class="text-end @(active == PayoffStrategy.Avalanche   ? "fw-bold" : "")">@result.Avalanche.TotalInterestPaid.ToString("C")</td>
+                            <td class="text-end @(active == PayoffStrategy.Snowball    ? "fw-bold" : "")">@result.Snowball.TotalInterestPaid.ToString("C")</td>
+                            <td class="text-end @(active == PayoffStrategy.Custom      ? "fw-bold" : "")">@result.Custom.TotalInterestPaid.ToString("C")</td>
+                            <td class="text-end @(active == PayoffStrategy.MinimumOnly ? "fw-bold" : "")">@result.MinimumOnly.TotalInterestPaid.ToString("C")</td>
                         </tr>
                         <tr>
                             <td class="text-muted small">Debt-free date</td>
-                            <td class="text-end @(active == PayoffStrategy.Avalanche ? "fw-bold" : "")">@result.Avalanche.PayoffDate.ToString("MMM yyyy")</td>
-                            <td class="text-end @(active == PayoffStrategy.Snowball  ? "fw-bold" : "")">@result.Snowball.PayoffDate.ToString("MMM yyyy")</td>
-                            <td class="text-end @(active == PayoffStrategy.Custom    ? "fw-bold" : "")">@result.Custom.PayoffDate.ToString("MMM yyyy")</td>
+                            <td class="text-end @(active == PayoffStrategy.Avalanche   ? "fw-bold" : "")">@result.Avalanche.PayoffDate.ToString("MMM yyyy")</td>
+                            <td class="text-end @(active == PayoffStrategy.Snowball    ? "fw-bold" : "")">@result.Snowball.PayoffDate.ToString("MMM yyyy")</td>
+                            <td class="text-end @(active == PayoffStrategy.Custom      ? "fw-bold" : "")">@result.Custom.PayoffDate.ToString("MMM yyyy")</td>
+                            <td class="text-end @(active == PayoffStrategy.MinimumOnly ? "fw-bold" : "")">@result.MinimumOnly.PayoffDate.ToString("MMM yyyy")</td>
                         </tr>
                     </tbody>
                 </table>
@@ -244,6 +248,7 @@ else
                             <option value="@PayoffStrategy.Avalanche">Avalanche (highest interest first)</option>
                             <option value="@PayoffStrategy.Snowball">Snowball (smallest balance first)</option>
                             <option value="@PayoffStrategy.Custom">Custom order</option>
+                            <option value="@PayoffStrategy.MinimumOnly">Minimum payments only</option>
                         </select>
                     </div>
                     <div class="mb-3">
