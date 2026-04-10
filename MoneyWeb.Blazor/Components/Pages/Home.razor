@@ -1,6 +1,140 @@
 ﻿@page "/"
+@using MoneyWeb.Blazor.Services
+@using MoneyWeb.Data.Models
+@using MoneyWeb.Data.Repositories.Interfaces
+@inject CurrentUserService CurrentUserService
+@inject IDebtRepository DebtRepository
+@inject IBillRepository BillRepository
+@inject ILoanRepository LoanRepository
 
 <PageTitle>MoneyWeb</PageTitle>
 
-<h1>Welcome to MoneyWeb</h1>
-<p class="text-muted">Your personal finance tracker. Use the menu to manage your debts, bills, and loans.</p>
+@* ── App description – visible to everyone ── *@
+<h1>MoneyWeb</h1>
+<p class="lead">A personal finance tracker that replaces the spreadsheet.</p>
+<ul>
+    <li><strong>Debts</strong> – Track balances, interest rates, and minimum payments. Uses the avalanche strategy to show the fastest path to payoff.</li>
+    <li><strong>Bills</strong> – Keep a running list of recurring monthly, quarterly, and annual expenses.</li>
+    <li><strong>Loans</strong> – Track money lent to friends or family and monitor repayments.</li>
+    <li><strong>Forecast</strong> – Project cash flow forward so there are no surprises.</li>
+</ul>
+<p><em>MoneyWeb is currently invite-only. Access is granted by an administrator after your account is created.</em></p>
+
+<hr />
+
+@if (_loading)
+{
+    <p>Loading&hellip;</p>
+}
+else if (_currentUser is null)
+{
+    @* Not signed in *@
+    <p>
+        <a href="MicrosoftIdentity/Account/SignIn" class="btn btn-primary">Sign in to get started</a>
+    </p>
+}
+else if (!_currentUser.IsApproved)
+{
+    @* Signed in but awaiting approval *@
+    <div class="alert alert-info">
+        <strong>Access pending.</strong> Your account has been created and is awaiting administrator approval.
+        You'll have full access once approved.
+        <br /><br />
+        <a href="MicrosoftIdentity/Account/SignOut" class="btn btn-sm btn-outline-secondary">Sign out</a>
+    </div>
+}
+else
+{
+    @* Approved user – show dashboard summary *@
+    <h2>Dashboard</h2>
+
+    <div class="row g-3 mb-4">
+        <div class="col-sm-6 col-lg-3">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h6 class="card-subtitle mb-1 text-muted">Active Debts</h6>
+                    <p class="card-text fs-4">@_debtCount</p>
+                    <p class="card-text text-muted small">Total balance: @_totalDebtBalance.ToString("C")</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h6 class="card-subtitle mb-1 text-muted">Monthly Debt Payments</h6>
+                    <p class="card-text fs-4">@_totalMinPayments.ToString("C")</p>
+                    <p class="card-text text-muted small">Sum of minimum payments</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h6 class="card-subtitle mb-1 text-muted">Monthly Bills</h6>
+                    <p class="card-text fs-4">@_monthlyBillTotal.ToString("C")</p>
+                    <p class="card-text text-muted small">@_billCount active bill(s)</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h6 class="card-subtitle mb-1 text-muted">Outstanding Loans</h6>
+                    <p class="card-text fs-4">@_outstandingLoanBalance.ToString("C")</p>
+                    <p class="card-text text-muted small">@_unsettledLoanCount unsettled loan(s)</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <p class="text-muted small">
+        Total monthly obligations: <strong>@((_totalMinPayments + _monthlyBillTotal).ToString("C"))</strong>
+    </p>
+}
+
+@code {
+    private bool _loading = true;
+    private User? _currentUser;
+
+    // Debt summary
+    private int _debtCount;
+    private decimal _totalDebtBalance;
+    private decimal _totalMinPayments;
+
+    // Bill summary
+    private int _billCount;
+    private decimal _monthlyBillTotal;
+
+    // Loan summary
+    private int _unsettledLoanCount;
+    private decimal _outstandingLoanBalance;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _currentUser = await CurrentUserService.GetCurrentUserAsync();
+
+        if (_currentUser?.IsApproved == true)
+        {
+            var debts = (await DebtRepository.GetAllAsync(_currentUser.Id, activeOnly: true)).ToList();
+            _debtCount = debts.Count;
+            _totalDebtBalance = debts.Sum(d => d.Balance);
+            _totalMinPayments = debts.Sum(d => d.MinimumPayment);
+
+            var bills = (await BillRepository.GetAllAsync(_currentUser.Id, activeOnly: true)).ToList();
+            _billCount = bills.Count;
+            _monthlyBillTotal = bills.Sum(b => b.Frequency switch
+            {
+                BillFrequency.Monthly    => b.Amount,
+                BillFrequency.Quarterly  => b.Amount / 3m,
+                BillFrequency.Annual     => b.Amount / 12m,
+                _                        => b.Amount
+            });
+
+            var loans = (await LoanRepository.GetAllAsync(_currentUser.Id, unsettledOnly: true)).ToList();
+            _unsettledLoanCount = loans.Count;
+            _outstandingLoanBalance = loans.Sum(l => l.Balance);
+        }
+
+        _loading = false;
+    }
+}
