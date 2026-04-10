@@ -36,7 +36,7 @@ public class UserRepository(string connectionString) : IUserRepository
         // MERGE guards against the race condition where multiple concurrent requests
         // (HTTP pipeline + Blazor circuit) both attempt to provision the same user.
         var sql = """
-            MERGE Users AS target
+            MERGE Users WITH (HOLDLOCK) AS target
             USING (SELECT @EntraObjectId AS EntraObjectId) AS source
                 ON target.EntraObjectId = source.EntraObjectId
             WHEN NOT MATCHED THEN
