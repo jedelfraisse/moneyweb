@@ -28,6 +28,9 @@ public class DebtPayoffService
         // Working copies — track remaining balance per debt id
         var balances = debts.ToDictionary(d => d.Id, d => d.Balance);
         var paidOffDates = new Dictionary<int, DateOnly>();
+        var interestByDebt = debts.ToDictionary(d => d.Id, _ => 0m);
+        var schedule = new List<ScheduledPayment>();
+        const int scheduleMonthCap = 60; // 5-year schedule for cash flow display
         decimal totalInterest = 0m;
         int month = 0;
         const int maxMonths = 600; // 50-year safety cap
@@ -43,10 +46,26 @@ public class DebtPayoffService
 
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
 
+        // Compute next-cycle payment amounts before simulation starts
+        var minSum = debts.Where(d => balances[d.Id] > 0).Sum(d => d.MinimumPayment);
+        var surplus = Math.Max(0m, monthlyBudget - minSum);
+        var focusDebt = strategy != PayoffStrategy.MinimumOnly
+            ? ordered.FirstOrDefault(d => balances[d.Id] > 0 && !d.IsFixedPayment)
+            : null;
+        var nextPaymentAmounts = debts.ToDictionary(d => d.Id, d =>
+        {
+            if (balances[d.Id] <= 0) return 0m;
+            var min = Math.Min(d.MinimumPayment, balances[d.Id]);
+            if (focusDebt != null && d.Id == focusDebt.Id)
+                return min + Math.Min(surplus, balances[d.Id] - min);
+            return min;
+        });
+
         while (balances.Values.Any(b => b > 0) && month < maxMonths)
         {
             month++;
             decimal budgetRemaining = monthlyBudget;
+            var totalBefore = balances.Values.Sum();
 
             // Accrue interest on all active balances
             foreach (var debt in debts)
@@ -55,16 +74,19 @@ public class DebtPayoffService
                 var monthlyRate = debt.InterestRate / 12m;
                 var interest = Math.Round(balances[debt.Id] * monthlyRate, 2);
                 balances[debt.Id] += interest;
+                interestByDebt[debt.Id] += interest;
                 totalInterest += interest;
             }
 
-            // Pay minimums first
+            // Pay minimums first — track payments per debt this month for the schedule
+            var paymentsThisMonth = debts.ToDictionary(d => d.Id, _ => 0m);
             foreach (var debt in debts)
             {
                 if (balances[debt.Id] <= 0) continue;
                 var payment = Math.Min(debt.MinimumPayment, balances[debt.Id]);
                 balances[debt.Id] -= payment;
                 budgetRemaining -= payment;
+                paymentsThisMonth[debt.Id] += payment;
                 if (balances[debt.Id] <= 0)
                 {
                     balances[debt.Id] = 0;
@@ -72,15 +94,16 @@ public class DebtPayoffService
                 }
             }
 
-            // Apply surplus to the current focus debt (first non-zero in priority order)
+            // Apply surplus to the current focus debt (first non-zero flexible debt in priority order)
             if (budgetRemaining > 0 && strategy != PayoffStrategy.MinimumOnly)
             {
                 foreach (var debt in ordered)
                 {
-                    if (balances[debt.Id] <= 0) continue;
+                    if (balances[debt.Id] <= 0 || debt.IsFixedPayment) continue;
                     var extra = Math.Min(budgetRemaining, balances[debt.Id]);
                     balances[debt.Id] -= extra;
                     budgetRemaining -= extra;
+                    paymentsThisMonth[debt.Id] += extra;
                     if (balances[debt.Id] <= 0)
                     {
                         balances[debt.Id] = 0;
@@ -89,6 +112,28 @@ public class DebtPayoffService
                     break; // Only one focus debt per month
                 }
             }
+
+            // Record scheduled payments (capped at scheduleMonthCap for UI)
+            if (month <= scheduleMonthCap)
+            {
+                foreach (var debt in debts)
+                {
+                    var paid = paymentsThisMonth[debt.Id];
+                    if (paid <= 0) continue;
+                    var dueMonth = today.AddMonths(month);
+                    int day = debt.PaymentDayOfMonth.HasValue
+                        ? Math.Min(debt.PaymentDayOfMonth.Value, DateTime.DaysInMonth(dueMonth.Year, dueMonth.Month))
+                        : 1;
+                    var dueDate = new DateOnly(dueMonth.Year, dueMonth.Month, day);
+                    var fees = debt.Fees.Where(f => f.IsActive).Sum(f => f.Amount);
+                    schedule.Add(new ScheduledPayment(debt.Id, debt.Name, dueDate, paid, fees, balances[debt.Id]));
+                }
+            }
+
+            // If total balance didn't decrease, payments can't cover interest — won't ever pay off
+            var totalAfter = balances.Values.Sum();
+            if (totalAfter >= totalBefore && month > 1)
+                break;
         }
 
         // Any debts still not paid off get max date
@@ -97,10 +142,13 @@ public class DebtPayoffService
 
         return new StrategyResult
         {
-            TotalInterestPaid = Math.Round(totalInterest, 2),
-            TotalMonths       = month,
-            PayoffDate        = today.AddMonths(month),
-            DebtPayoffDates   = paidOffDates,
+            TotalInterestPaid  = Math.Round(totalInterest, 2),
+            TotalMonths        = month,
+            PayoffDate         = today.AddMonths(month),
+            DebtPayoffDates    = paidOffDates,
+            DebtInterestPaid   = interestByDebt.ToDictionary(kv => kv.Key, kv => Math.Round(kv.Value, 2)),
+            NextPaymentAmounts = nextPaymentAmounts,
+            PaymentSchedule    = schedule,
             BudgetShortfall   = debts.Where(d => balances.GetValueOrDefault(d.Id) > 0 && d.Balance > 0)
                                      .Sum(d => d.MinimumPayment) > monthlyBudget
                                 ? debts.Sum(d => d.MinimumPayment) - monthlyBudget
@@ -133,4 +181,10 @@ public class StrategyResult
     public decimal BudgetShortfall   { get; init; }
     /// <summary>Maps Debt.Id → projected payoff date under this strategy.</summary>
     public Dictionary<int, DateOnly> DebtPayoffDates { get; init; } = [];
+    /// <summary>Maps Debt.Id → total interest paid over the life of this debt under this strategy.</summary>
+    public Dictionary<int, decimal> DebtInterestPaid { get; init; } = [];
+    /// <summary>Maps Debt.Id → the payment amount for the upcoming payment cycle (min + any surplus for the focus debt).</summary>
+    public Dictionary<int, decimal> NextPaymentAmounts { get; init; } = [];
+    /// <summary>Month-by-month payment schedule (capped at 60 months) for generating projected cash flow transactions.</summary>
+    public List<ScheduledPayment> PaymentSchedule { get; init; } = [];
 }

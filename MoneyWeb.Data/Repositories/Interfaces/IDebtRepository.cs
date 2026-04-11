@@ -9,4 +9,10 @@ public interface IDebtRepository
     Task<int> CreateAsync(Debt debt);
     Task UpdateAsync(Debt debt);
     Task DeleteAsync(int id, int userId);
+    Task UpdateLastPaymentAsync(int id, int userId, DateOnly paymentDate);
+    Task<IEnumerable<Debt>> GetSharedWithMeAsync(int userId);
+    Task<IEnumerable<DebtFee>> GetFeesAsync(int debtId, int userId);
+    Task<int> CreateFeeAsync(DebtFee fee);
+    Task UpdateFeeAsync(DebtFee fee);
+    Task DeleteFeeAsync(int id, int userId);
 }

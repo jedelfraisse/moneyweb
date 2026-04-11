@@ -54,4 +54,30 @@ public class BankAccountRepository(string connectionString) : IBankAccountReposi
             "DELETE FROM BankAccounts WHERE Id = @Id AND UserId = @UserId",
             new { Id = id, UserId = userId });
     }
+
+    public async Task<IEnumerable<BankAccount>> GetSharedWithMeAsync(int userId)
+    {
+        using var conn = Connect();
+        var sql = """
+            SELECT DISTINCT b.*, u.DisplayName AS OwnerDisplayName
+            FROM BankAccounts b
+            INNER JOIN Users u ON u.Id = b.UserId
+            WHERE b.UserId != @UserId
+              AND EXISTS (
+                SELECT 1 FROM SharePermissions sp
+                WHERE sp.EntityType = 2
+                  AND sp.EntityId = b.Id
+                  AND (
+                    sp.SharedWithUserId = @UserId
+                    OR (sp.SharedWithGroupId IS NOT NULL AND EXISTS (
+                        SELECT 1 FROM UserGroupMembers m
+                        WHERE m.GroupId = sp.SharedWithGroupId
+                          AND m.UserId = @UserId AND m.Status = 1
+                    ))
+                  )
+              )
+            ORDER BY b.Name
+            """;
+        return await conn.QueryAsync<BankAccount>(sql, new { UserId = userId });
+    }
 }

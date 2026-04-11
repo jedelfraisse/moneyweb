@@ -1,0 +1,380 @@
+@page "/income"
+@rendermode InteractiveServer
+@using MoneyWeb.Blazor.Services
+@using MoneyWeb.Data.Models
+@using MoneyWeb.Data.Repositories.Interfaces
+@using IncomeModel = MoneyWeb.Data.Models.Income
+@attribute [Authorize]
+@inject CurrentUserService CurrentUserService
+@inject IIncomeRepository IncomeRepo
+@inject IBankAccountRepository AccountRepo
+@inject ICashFlowRepository CashFlowRepo
+
+<PageTitle>Income – MoneyWeb</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="mb-0">Income</h1>
+    <button class="btn btn-primary" @onclick="OpenAddIncome">Add Income Source</button>
+</div>
+
+@if (_loading)
+{
+    <p>Loading&hellip;</p>
+}
+else if (!_incomes.Any())
+{
+    <p class="text-muted">No income sources yet. Add one to get started.</p>
+}
+else
+{
+    <table class="table table-hover">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Type</th>
+                <th class="text-end">Est. Amount</th>
+                <th>Frequency</th>
+                <th>Bank Account</th>
+                <th class="text-end">Next Payment</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var income in _incomes)
+            {
+                <tr class="@(income.IsActive ? "" : "text-muted opacity-50")">
+                    <td>
+                        @income.Name
+                        @if (income.IsVariable)
+                        {
+                            <span class="badge bg-secondary ms-1" title="Variable / estimated">~</span>
+                        }
+                        @if (!income.IsActive)
+                        {
+                            <span class="badge bg-secondary ms-1">Inactive</span>
+                        }
+                    </td>
+                    <td>@income.IncomeType</td>
+                    <td class="text-end">@income.EstimatedAmount.ToString("C")</td>
+                    <td>@FormatFrequency(income.Frequency)</td>
+                    <td class="text-muted small">@(income.BankAccount?.Name ?? "—")</td>
+                    <td class="text-end text-nowrap">
+                        <span class="@(income.NextPaymentDate <= DateOnly.FromDateTime(DateTime.Today.AddDays(7)) ? "text-danger fw-semibold" : "")">
+                            @income.NextPaymentDate.ToString("MMM d, yyyy")
+                        </span>
+                        <button class="btn btn-sm btn-outline-success ms-1 px-1 py-0" title="Confirm received – advance to next period"
+                                @onclick="() => ConfirmReceived(income)">✓</button>
+                    </td>
+                    <td class="text-end text-nowrap">
+                        @if (income.BankAccountId.HasValue)
+                        {
+                            <button class="btn btn-sm btn-outline-success me-1" @onclick="() => PushIncomeProjections(income)" title="Push projected income to Cash Flow">Push to Cash Flow</button>
+                            <a class="btn btn-sm btn-link p-0 me-1 text-muted" href="/transactions/@income.BankAccountId">View →</a>
+                        }
+                        <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => OpenEditIncome(income)">Edit</button>
+                        <button class="btn btn-sm btn-outline-danger" @onclick="() => _deleteTarget = income">Delete</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+        <tfoot>
+            <tr class="fw-bold">
+                <td colspan="2">Total Estimated</td>
+                <td class="text-end">@_incomes.Where(i => i.IsActive).Sum(i => i.EstimatedAmount).ToString("C")/period</td>
+                <td colspan="4"></td>
+            </tr>
+        </tfoot>
+    </table>
+}
+
+@if (_sharedIncomes.Any())
+{
+    <h2 class="h5 mt-4">Shared With You</h2>
+    <table class="table table-hover">
+        <thead>
+            <tr>
+                <th>Owner</th>
+                <th>Name</th>
+                <th>Type</th>
+                <th class="text-end">Est. Amount</th>
+                <th>Frequency</th>
+                <th class="text-end">Next Payment</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var income in _sharedIncomes)
+            {
+                <tr>
+                    <td><span class="badge bg-secondary">@income.OwnerDisplayName</span></td>
+                    <td>@income.Name</td>
+                    <td>@income.IncomeType</td>
+                    <td class="text-end">@income.EstimatedAmount.ToString("C")</td>
+                    <td>@FormatFrequency(income.Frequency)</td>
+                    <td class="text-end">@income.NextPaymentDate.ToString("MMM d, yyyy")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@* ── Income Modal ── *@
+@if (_showModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.4)">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@(_editing.Id == 0 ? "Add" : "Edit") Income Source</h5>
+                    <button type="button" class="btn-close" @onclick="CloseModal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row mb-3">
+                        <div class="col">
+                            <label class="form-label">Name</label>
+                            <input class="form-control" @bind="_editing.Name" placeholder="e.g. Main Job" />
+                        </div>
+                        <div class="col-auto">
+                            <label class="form-label">Type</label>
+                            <select class="form-select" @bind="_editing.IncomeType">
+                                <option value="@IncomeType.Salary">Salary</option>
+                                <option value="@IncomeType.Hourly">Hourly</option>
+                                <option value="@IncomeType.Other">Other</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col">
+                            <label class="form-label">Estimated Amount (per period)</label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input class="form-control" type="number" step="0.01" @bind="_editing.EstimatedAmount" />
+                            </div>
+                        </div>
+                        <div class="col-auto d-flex align-items-end pb-1">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="chkVariable" @bind="_editing.IsVariable" />
+                                <label class="form-check-label" for="chkVariable">Variable / estimated</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col">
+                            <label class="form-label">Frequency</label>
+                            <select class="form-select" @bind="_editing.Frequency">
+                                <option value="@IncomeFrequency.Weekly">Weekly</option>
+                                <option value="@IncomeFrequency.BiWeekly">Bi-weekly</option>
+                                <option value="@IncomeFrequency.SemiMonthly">Semi-monthly (1st &amp; 15th)</option>
+                                <option value="@IncomeFrequency.Monthly">Monthly</option>
+                            </select>
+                        </div>
+                        <div class="col">
+                            <label class="form-label">Next Payment Date</label>
+                            <input class="form-control" type="date"
+                                   value="@_editing.NextPaymentDate.ToString("yyyy-MM-dd")"
+                                   @onchange="e => { if (DateOnly.TryParse(e.Value?.ToString(), out var d)) _editing.NextPaymentDate = d; }" />
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Bank Account (optional)</label>
+                        <select class="form-select" value="@_bankIdStr"
+                                @onchange="e => _bankIdStr = e.Value?.ToString() ?? string.Empty">
+                            <option value="">— None —</option>
+                            @foreach (var acct in _bankAccounts)
+                            {
+                                <option value="@acct.Id">@acct.Name (@acct.AccountType)</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Description</label>
+                        <input class="form-control" @bind="_editing.Description" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Notes</label>
+                        <textarea class="form-control" rows="2" @bind="_editing.Notes"></textarea>
+                    </div>
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" id="chkActive" @bind="_editing.IsActive" />
+                        <label class="form-check-label" for="chkActive">Active</label>
+                    </div>
+                    @if (_error is not null)
+                    {
+                        <div class="alert alert-danger">@_error</div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CloseModal">Cancel</button>
+                    <button class="btn btn-primary" @onclick="Save">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ── Delete Confirm ── *@
+@if (_deleteTarget is not null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.4)">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header"><h5 class="modal-title">Delete Income Source</h5></div>
+                <div class="modal-body">
+                    <p>Delete <strong>@_deleteTarget.Name</strong>? This cannot be undone.</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="() => _deleteTarget = null">Cancel</button>
+                    <button class="btn btn-danger" @onclick="DeleteConfirmed">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _loading = true;
+    private int _userId;
+    private int _horizonMonths = 12;
+    private List<IncomeModel> _incomes = [];
+    private List<IncomeModel> _sharedIncomes = [];
+    private List<BankAccount> _bankAccounts = [];
+
+    private bool _showModal;
+    private IncomeModel _editing = new();
+    private string _bankIdStr = string.Empty;
+    private string? _error;
+    private IncomeModel? _deleteTarget;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = await CurrentUserService.GetCurrentUserAsync();
+        if (user?.IsApproved != true) return;
+        _userId = user.Id;
+        _horizonMonths = Math.Clamp(user.CashFlowHorizonMonths, 1, 60);
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _bankAccounts = (await AccountRepo.GetAllAsync(_userId)).ToList();
+        _incomes = (await IncomeRepo.GetAllAsync(_userId, activeOnly: false)).ToList();
+        _sharedIncomes = (await IncomeRepo.GetSharedWithMeAsync(_userId)).ToList();
+        _loading = false;
+    }
+
+    private void OpenAddIncome()
+    {
+        _editing = new IncomeModel
+        {
+            UserId = _userId,
+            IsActive = true,
+            NextPaymentDate = DateOnly.FromDateTime(DateTime.Today)
+        };
+        _bankIdStr = string.Empty;
+        _error = null;
+        _showModal = true;
+    }
+
+    private void OpenEditIncome(IncomeModel i)
+    {
+        _editing = new IncomeModel
+        {
+            Id = i.Id, UserId = i.UserId, BankAccountId = i.BankAccountId,
+            Name = i.Name, Description = i.Description,
+            IncomeType = i.IncomeType, IsVariable = i.IsVariable,
+            EstimatedAmount = i.EstimatedAmount, Frequency = i.Frequency,
+            NextPaymentDate = i.NextPaymentDate, IsActive = i.IsActive,
+            Notes = i.Notes
+        };
+        _bankIdStr = i.BankAccountId.HasValue ? i.BankAccountId.Value.ToString() : string.Empty;
+        _error = null;
+        _showModal = true;
+    }
+
+    private void CloseModal() => _showModal = false;
+
+    private async Task Save()
+    {
+        if (string.IsNullOrWhiteSpace(_editing.Name)) { _error = "Name is required."; return; }
+        if (_editing.EstimatedAmount < 0) { _error = "Amount cannot be negative."; return; }
+        _editing.UserId = _userId;
+        _editing.BankAccountId = int.TryParse(_bankIdStr, out var bid) ? bid : null;
+        if (_editing.Id == 0)
+            await IncomeRepo.CreateAsync(_editing);
+        else
+            await IncomeRepo.UpdateAsync(_editing);
+        _showModal = false;
+        await LoadAsync();
+    }
+
+    private async Task ConfirmReceived(IncomeModel income)
+    {
+        await IncomeRepo.AdvanceNextPaymentAsync(income.Id, _userId);
+        await LoadAsync();
+    }
+
+    private async Task DeleteConfirmed()
+    {
+        if (_deleteTarget is null) return;
+        await IncomeRepo.DeleteAsync(_deleteTarget.Id, _userId);
+        _deleteTarget = null;
+        await LoadAsync();
+    }
+
+    private async Task PushIncomeProjections(IncomeModel income)
+    {
+        if (!income.BankAccountId.HasValue) return;
+
+        // Remove existing non-overridden projected income for this source
+        await CashFlowRepo.DeleteProjectedForSourceAsync(income.Id, _userId, TransactionCategory.Income);
+
+        // Generate schedule forward 60 months from today
+        var transactions = BuildIncomeSchedule(income);
+        await CashFlowRepo.BulkInsertProjectedAsync(transactions);
+        await LoadAsync();
+    }
+
+    private List<CashFlowTransaction> BuildIncomeSchedule(IncomeModel income)
+    {
+        var result = new List<CashFlowTransaction>();
+        var cutoff = DateOnly.FromDateTime(DateTime.Today.AddMonths(_horizonMonths));
+        var date = income.NextPaymentDate;
+
+        while (date <= cutoff)
+        {
+            result.Add(new CashFlowTransaction
+            {
+                UserId = _userId,
+                BankAccountId = income.BankAccountId!.Value,
+                TransactionDate = date,
+                Description = income.Name,
+                Amount = income.EstimatedAmount,   // positive = inflow
+                Category = TransactionCategory.Income,
+                ReferenceId = income.Id,
+                IsProjected = true,
+                IsManualOverride = false
+            });
+            date = AdvanceByFrequency(date, income.Frequency);
+        }
+        return result;
+    }
+
+    private static DateOnly AdvanceByFrequency(DateOnly date, IncomeFrequency freq) => freq switch
+    {
+        IncomeFrequency.Weekly      => date.AddDays(7),
+        IncomeFrequency.BiWeekly    => date.AddDays(14),
+        IncomeFrequency.SemiMonthly => date.Day < 15
+                                        ? new DateOnly(date.Year, date.Month, 15)
+                                        : new DateOnly(date.Year, date.Month, 1).AddMonths(1),
+        IncomeFrequency.Monthly     => date.AddMonths(1),
+        _                           => date.AddMonths(1)
+    };
+
+    private static string FormatFrequency(IncomeFrequency f) => f switch
+    {
+        IncomeFrequency.Weekly      => "Weekly",
+        IncomeFrequency.BiWeekly    => "Bi-weekly",
+        IncomeFrequency.SemiMonthly => "Semi-monthly",
+        IncomeFrequency.Monthly     => "Monthly",
+        _                           => f.ToString()
+    };
+}

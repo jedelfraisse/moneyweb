@@ -9,4 +9,5 @@ public interface IBankAccountRepository
     Task<int> CreateAsync(BankAccount account);
     Task UpdateAsync(BankAccount account);
     Task DeleteAsync(int id, int userId);
+    Task<IEnumerable<BankAccount>> GetSharedWithMeAsync(int userId);
 }

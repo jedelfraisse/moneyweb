@@ -54,7 +54,8 @@ public class UserRepository(string connectionString) : IUserRepository
         await conn.ExecuteAsync("""
             UPDATE Users SET
                 Email = @Email, DisplayName = @DisplayName,
-                IsApproved = @IsApproved, IsAdmin = @IsAdmin
+                IsApproved = @IsApproved, IsAdmin = @IsAdmin,
+                CashFlowHorizonMonths = @CashFlowHorizonMonths
             WHERE Id = @Id
             """, user);
     }

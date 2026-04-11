@@ -45,7 +45,9 @@ public class DebtGroupRepository(string connectionString) : IDebtGroupRepository
         var sql = $"""
             SELECT g.*, ba.Id, ba.UserId, ba.Name, ba.AccountType, ba.CurrentBalance, ba.Notes, ba.CreatedAt, ba.UpdatedAt,
                    d.Id, d.UserId, d.GroupId, d.GroupSortOrder, d.Name, d.Lender,
-                   d.Balance, d.InterestRate, d.MinimumPayment, d.PayoffDate, d.IsActive, d.CreatedAt, d.UpdatedAt
+                   d.Balance, d.InterestRate, d.MinimumPayment, d.IsFixedPayment,
+                   d.PaymentDayOfMonth, d.LastPaymentDate, d.PaymentMethod,
+                   d.PayoffDate, d.IsActive, d.CreatedAt, d.UpdatedAt
             FROM DebtGroups g
             LEFT JOIN BankAccounts ba ON ba.Id = g.BankAccountId
             LEFT JOIN Debts d ON d.GroupId = g.Id AND d.IsActive = 1
@@ -71,6 +73,20 @@ public class DebtGroupRepository(string connectionString) : IDebtGroupRepository
             },
             new { UserId = userId, GroupId = groupId },
             splitOn: "Id,Id");
+
+        // Load fees for all debts in the result
+        var allDebts = groupDict.Values.SelectMany(g => g.Debts).ToList();
+        if (allDebts.Count > 0)
+        {
+            var debtIds = allDebts.Select(d => d.Id).ToList();
+            var fees = (await conn.QueryAsync<DebtFee>(
+                "SELECT * FROM DebtFees WHERE DebtId IN @Ids AND UserId = @UserId ORDER BY DebtId, Id",
+                new { Ids = debtIds, UserId = userId })).ToList();
+            var feesByDebt = fees.GroupBy(f => f.DebtId).ToDictionary(g => g.Key, g => g.ToList());
+            foreach (var debt in allDebts)
+                if (feesByDebt.TryGetValue(debt.Id, out var df))
+                    debt.Fees = df;
+        }
 
         return groupDict.Values;
     }

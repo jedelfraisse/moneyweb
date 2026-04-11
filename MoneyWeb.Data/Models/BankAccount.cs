@@ -8,6 +8,7 @@ public class BankAccount
     public AccountType AccountType { get; set; }
     public decimal CurrentBalance { get; set; }
     public string? Notes { get; set; }
+    public string? OwnerDisplayName { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }

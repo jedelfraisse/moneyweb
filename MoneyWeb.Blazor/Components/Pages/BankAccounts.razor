@@ -43,6 +43,7 @@ else
                     <td class="text-end">@acct.CurrentBalance.ToString("C")</td>
                     <td class="text-muted small">@acct.Notes</td>
                     <td class="text-end text-nowrap">
+                        <a class="btn btn-sm btn-outline-primary me-1" href="/transactions/@acct.Id">Cash Flow</a>
                         <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => OpenEdit(acct)">Edit</button>
                         <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(acct)">Delete</button>
                     </td>
@@ -56,6 +57,34 @@ else
                 <td colspan="2"></td>
             </tr>
         </tfoot>
+    </table>
+}
+
+@if (_sharedAccounts.Any())
+{
+    <h2 class="h5 mt-4">Shared With You</h2>
+    <table class="table table-hover">
+        <thead>
+            <tr>
+                <th>Owner</th>
+                <th>Name</th>
+                <th>Type</th>
+                <th class="text-end">Balance</th>
+                <th>Notes</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var acct in _sharedAccounts)
+            {
+                <tr>
+                    <td><span class="badge bg-secondary">@acct.OwnerDisplayName</span></td>
+                    <td>@acct.Name</td>
+                    <td>@acct.AccountType</td>
+                    <td class="text-end">@acct.CurrentBalance.ToString("C")</td>
+                    <td class="text-muted small">@acct.Notes</td>
+                </tr>
+            }
+        </tbody>
     </table>
 }
 
@@ -128,6 +157,7 @@ else
 @code {
     private bool _loading = true;
     private List<BankAccount> _accounts = [];
+    private List<BankAccount> _sharedAccounts = [];
     private bool _showModal;
     private BankAccount _editing = new();
     private BankAccount? _deleteTarget;
@@ -145,6 +175,7 @@ else
     private async Task LoadAsync()
     {
         _accounts = (await AccountRepo.GetAllAsync(_userId)).ToList();
+        _sharedAccounts = (await AccountRepo.GetSharedWithMeAsync(_userId)).ToList();
         _loading = false;
     }
 
@@ -160,7 +191,8 @@ else
         _editing = new BankAccount
         {
             Id = acct.Id, UserId = acct.UserId, Name = acct.Name,
-            AccountType = acct.AccountType, CurrentBalance = acct.CurrentBalance, Notes = acct.Notes
+            AccountType = acct.AccountType, CurrentBalance = acct.CurrentBalance,
+            Notes = acct.Notes
         };
         _error = null;
         _showModal = true;

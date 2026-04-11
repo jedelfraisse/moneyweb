@@ -20,6 +20,12 @@ public static class DataServiceExtensions
         services.AddScoped<IUserRepository>(_ => new UserRepository(connectionString));
         services.AddScoped<IBankAccountRepository>(_ => new BankAccountRepository(connectionString));
         services.AddScoped<IDebtGroupRepository>(_ => new DebtGroupRepository(connectionString));
+        services.AddScoped<IIncomeRepository>(_ => new IncomeRepository(connectionString));
+        services.AddScoped<IUserGroupRepository>(_ => new UserGroupRepository(connectionString));
+        services.AddScoped<IShareRepository>(_ => new ShareRepository(connectionString));
+        services.AddScoped<ICashFlowRepository>(_ => new CashFlowRepository(connectionString));
+        services.AddScoped<ISinkingFundRepository, SinkingFundRepository>(
+            _ => new SinkingFundRepository(connectionString));
 
         // Services
         services.AddSingleton<DebtPayoffService>();

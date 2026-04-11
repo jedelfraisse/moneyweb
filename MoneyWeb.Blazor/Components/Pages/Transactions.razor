@@ -1,0 +1,208 @@
+@page "/transactions/{BankAccountId:int}"
+@rendermode InteractiveServer
+@using MoneyWeb.Blazor.Services
+@using MoneyWeb.Data.Models
+@using MoneyWeb.Data.Repositories.Interfaces
+@attribute [Authorize]
+@inject CurrentUserService CurrentUserService
+@inject IBankAccountRepository AccountRepo
+@inject ICashFlowRepository CashFlowRepo
+@inject NavigationManager Nav
+
+<PageTitle>Cash Flow – MoneyWeb</PageTitle>
+
+@if (_loading)
+{
+    <p>Loading&hellip;</p>
+}
+else if (_account is null)
+{
+    <p class="text-danger">Account not found.</p>
+}
+else
+{
+    <nav aria-label="breadcrumb" class="mb-3">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/bank-accounts">Bank Accounts</a></li>
+            <li class="breadcrumb-item active">@_account.Name – Cash Flow</li>
+        </ol>
+    </nav>
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1 class="mb-0">@_account.Name <span class="text-muted fs-5">Cash Flow</span></h1>
+        <div>
+            <span class="text-muted small me-2">Current balance:</span>
+            <span class="fw-bold fs-5">@_account.CurrentBalance.ToString("C")</span>
+        </div>
+    </div>
+
+    @if (!_months.Any())
+    {
+        <div class="alert alert-info">
+            No projected transactions yet. Assign a bank account to a debt group and the payment schedule will appear here automatically.
+        </div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Date</th>
+                        <th>Description</th>
+                        <th class="text-end">Amount</th>
+                        <th class="text-end">Running Balance</th>
+                        <th class="text-center">Status</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var month in _months)
+                    {
+                        <tr class="table-dark text-white">
+                            <td colspan="6" class="fw-bold">@month.Label</td>
+                        </tr>
+                        @foreach (var row in month.Rows)
+                        {
+                            <tr class="@(row.Transaction.IsManualOverride ? "table-warning" : "")">
+                                <td class="text-nowrap">
+                                    @if (_changingDateId == row.Transaction.Id)
+                                    {
+                                        <input type="date" class="form-control form-control-sm" style="width:150px"
+                                               value="@row.Transaction.TransactionDate.ToString("yyyy-MM-dd")"
+                                               @onchange="e => OverrideDate(row.Transaction, e.Value?.ToString())" />
+                                    }
+                                    else
+                                    {
+                                        @row.Transaction.TransactionDate.ToString("MMM d, yyyy")
+                                    }
+                                </td>
+                                <td>
+                                    @row.Transaction.Description
+                                    @if (row.Transaction.IsManualOverride)
+                                    {
+                                        <span class="badge bg-warning text-dark ms-1" title="Date manually overridden">Custom</span>
+                                    }
+                                </td>
+                                <td class="text-end fw-semibold @(row.Transaction.Amount >= 0 ? "text-success" : "text-danger")">
+                                    @row.Transaction.Amount.ToString("C")
+                                </td>
+                                <td class="text-end @(row.RunningBalance < 0 ? "text-danger fw-bold" : "")">
+                                    @row.RunningBalance.ToString("C")
+                                </td>
+                                <td class="text-center">
+                                    @if (row.Transaction.IsProjected)
+                                    {
+                                        <span class="badge bg-secondary">Projected</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-success">Confirmed</span>
+                                    }
+                                </td>
+                                <td class="text-end text-nowrap">
+                                    @if (row.Transaction.IsProjected)
+                                    {
+                                        @if (_changingDateId == row.Transaction.Id)
+                                        {
+                                            <button class="btn btn-sm btn-outline-secondary" @onclick="() => _changingDateId = null">Cancel</button>
+                                        }
+                                        else
+                                        {
+                                            <button class="btn btn-sm btn-outline-secondary me-1" title="Change date"
+                                                    @onclick="() => _changingDateId = row.Transaction.Id">📅</button>
+                                            <button class="btn btn-sm btn-outline-danger" title="Remove"
+                                                    @onclick="() => DeleteTransaction(row.Transaction)">✕</button>
+                                        }
+                                    }
+                                </td>
+                            </tr>
+                        }
+                        <tr class="table-secondary text-muted small">
+                            <td colspan="2" class="ps-3">@month.Label net</td>
+                            <td class="text-end fw-semibold @(month.Subtotal >= 0 ? "text-success" : "text-danger")">
+                                @month.Subtotal.ToString("C")
+                            </td>
+                            <td colspan="3"></td>
+                        </tr>
+                    }
+                </tbody>
+                <tfoot>
+                    <tr class="fw-bold table-light">
+                        <td colspan="2">Projected balance after all transactions</td>
+                        <td colspan="2" class="text-end @(_finalBalance < 0 ? "text-danger" : "")">
+                            @_finalBalance.ToString("C")
+                        </td>
+                        <td colspan="2"></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public int BankAccountId { get; set; }
+
+    private bool _loading = true;
+    private int _userId;
+    private BankAccount? _account;
+    private List<MonthGroup> _months = [];
+    private decimal _finalBalance;
+    private int? _changingDateId;
+
+    private record TransactionRow(CashFlowTransaction Transaction, decimal RunningBalance);
+    private record MonthGroup(string Label, List<TransactionRow> Rows, decimal Subtotal);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = await CurrentUserService.GetCurrentUserAsync();
+        if (user?.IsApproved != true) { Nav.NavigateTo("/"); return; }
+        _userId = user.Id;
+
+        var accounts = await AccountRepo.GetAllAsync(_userId);
+        _account = accounts.FirstOrDefault(a => a.Id == BankAccountId);
+        if (_account is null) { _loading = false; return; }
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        var from = DateOnly.FromDateTime(DateTime.Today);
+        var to = from.AddMonths(60);
+        var raw = (await CashFlowRepo.GetForAccountAsync(BankAccountId, _userId, from, to))
+            .OrderBy(t => t.TransactionDate).ThenBy(t => t.Id)
+            .ToList();
+
+        decimal running = _account!.CurrentBalance;
+        _months = raw
+            .GroupBy(t => new { t.TransactionDate.Year, t.TransactionDate.Month })
+            .Select(g =>
+            {
+                var rows = g.Select(t => { running += t.Amount; return new TransactionRow(t, running); }).ToList();
+                var subtotal = g.Sum(t => t.Amount);
+                var label = new DateOnly(g.Key.Year, g.Key.Month, 1).ToString("MMMM yyyy");
+                return new MonthGroup(label, rows, subtotal);
+            })
+            .ToList();
+
+        _finalBalance = running;
+        _changingDateId = null;
+        _loading = false;
+    }
+
+    private async Task OverrideDate(CashFlowTransaction t, string? value)
+    {
+        if (!DateOnly.TryParse(value, out var newDate)) return;
+        await CashFlowRepo.UpdateManualOverrideDateAsync(t.Id, _userId, newDate);
+        _changingDateId = null;
+        await LoadAsync();
+    }
+
+    private async Task DeleteTransaction(CashFlowTransaction t)
+    {
+        await CashFlowRepo.DeleteAsync(t.Id, _userId);
+        await LoadAsync();
+    }
+}
