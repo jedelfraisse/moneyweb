@@ -258,6 +258,12 @@ else
                     {
                         <div class="alert alert-danger">@_occModalError</div>
                     }
+                    @if (_enteringActualBill?.PaymentMethod == DebtPaymentMethod.AutoDraft)
+                    {
+                        <div class="alert alert-info py-2 mb-3 small">
+                            <strong>Auto-Draft bill:</strong> saving the actual amount will update the estimate for future projections.
+                        </div>
+                    }
                     <div class="row g-3">
                         <div class="col-md-6">
                             <label class="form-label">Due Date</label>
@@ -325,6 +331,7 @@ else
     // Occurrence (actual) modal
     private bool _showActualModal;
     private BillOccurrence? _editingOcc;
+    private Bill? _enteringActualBill;      // the parent bill, needed to check PaymentMethod
     private DateOnly _occDueDate;
     private decimal _occActualAmount;
     private string? _occModalError;
@@ -439,6 +446,7 @@ else
             Status = BillOccurrenceStatus.Received,
             DueDate = bill.NextDueDate(today)
         };
+        _enteringActualBill = bill;
         _occDueDate = _editingOcc.DueDate;
         _occActualAmount = bill.Amount;
         _occModalError = null;
@@ -454,13 +462,14 @@ else
             ActualAmount = occ.ActualAmount, Status = occ.Status,
             SubmittedDate = occ.SubmittedDate, Notes = occ.Notes
         };
+        _enteringActualBill = _bills.FirstOrDefault(b => b.Id == occ.BillId);
         _occDueDate = occ.DueDate;
         _occActualAmount = occ.ActualAmount ?? occ.EstimatedAmount;
         _occModalError = null;
         _showActualModal = true;
     }
 
-    private void CloseActualModal() { _showActualModal = false; _editingOcc = null; _occModalError = null; }
+    private void CloseActualModal() { _showActualModal = false; _editingOcc = null; _enteringActualBill = null; _occModalError = null; }
 
     private async Task SaveOccurrence()
     {
@@ -479,6 +488,15 @@ else
             await BillRepo.CreateOccurrenceAsync(_editingOcc);
         else
             await BillRepo.UpdateOccurrenceAsync(_editingOcc);
+
+        // For Auto-Draft bills, the actual amount becomes the new estimate for future runs
+        if (_enteringActualBill is { PaymentMethod: DebtPaymentMethod.AutoDraft } bill
+            && _occActualAmount > 0 && _occActualAmount != bill.Amount)
+        {
+            bill.Amount = _occActualAmount;
+            await BillRepo.UpdateAsync(bill);
+            await LoadAsync();
+        }
 
         _occurrences.Remove(_editingOcc.BillId);
         if (_expanded.Contains(_editingOcc.BillId))
