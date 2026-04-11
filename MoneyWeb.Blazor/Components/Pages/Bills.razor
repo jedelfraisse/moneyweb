@@ -52,7 +52,18 @@ else
                                 @(_expanded.Contains(bill.Id) ? "▲" : "▼")
                             </button>
                         </td>
-                        <td class="fw-semibold">@bill.Name @(!bill.IsActive ? "<span class=\"badge bg-secondary ms-1\">Inactive</span>" : "")</td>
+                        <td class="fw-semibold">
+                            @bill.Name
+                            @if (!bill.IsActive) { <span class="badge bg-secondary ms-1">Inactive</span> }
+                            @if (_pushedBillIds.Contains(bill.Id))
+                            {
+                                <span class="badge bg-success ms-1" title="Projected payments are in Cash Flow">✓ Pushed</span>
+                            }
+                            else if (bill.BankAccountId.HasValue)
+                            {
+                                <span class="badge bg-light text-muted border ms-1" title="No projections in Cash Flow yet">Not pushed</span>
+                            }
+                        </td>
                         <td><span class="badge bg-light text-dark border">@bill.Category</span></td>
                         <td>@FrequencyLabel(bill.Frequency)</td>
                         <td class="text-end">@bill.Amount.ToString("C")</td>
@@ -319,6 +330,7 @@ else
     private List<BankAccount> _bankAccounts = [];
     private HashSet<int> _expanded = [];
     private Dictionary<int, List<BillOccurrence>> _occurrences = [];
+    private HashSet<int> _pushedBillIds = [];
     private string? _errorMessage;
 
     // Bill modal
@@ -347,6 +359,7 @@ else
         if (user is null) return;
         _bills = (await BillRepo.GetAllAsync(user.Id, activeOnly: false)).ToList();
         _bankAccounts = (await AccountRepo.GetAllAsync(user.Id)).ToList();
+        _pushedBillIds = [.. await CashFlowRepo.GetProjectedSourceIdsAsync(user.Id, TransactionCategory.Bill)];
     }
 
     private async Task ToggleExpand(int billId)
@@ -556,6 +569,7 @@ else
         if (transactions.Count > 0)
             await CashFlowRepo.BulkInsertProjectedAsync(transactions);
 
+        _pushedBillIds.Add(bill.Id);
         _errorMessage = null;
         StateHasChanged();
     }

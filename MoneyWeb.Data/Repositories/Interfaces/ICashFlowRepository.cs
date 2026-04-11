@@ -33,4 +33,10 @@ public interface ICashFlowRepository
 
     /// <summary>Delete a single transaction (skip/remove from cash flow).</summary>
     Task DeleteAsync(int id, int userId);
+
+    /// <summary>Distinct ReferenceIds that have at least one projected transaction for the given category.</summary>
+    Task<IEnumerable<int>> GetProjectedSourceIdsAsync(int userId, TransactionCategory category);
+
+    /// <summary>Distinct DebtGroupIds that have at least one projected transaction.</summary>
+    Task<IEnumerable<int>> GetProjectedGroupIdsAsync(int userId);
 }

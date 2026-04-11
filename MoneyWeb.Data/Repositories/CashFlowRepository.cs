@@ -134,4 +134,23 @@ public class CashFlowRepository(string connectionString) : ICashFlowRepository
             "DELETE FROM CashFlowTransactions WHERE Id = @Id AND UserId = @UserId",
             new { Id = id, UserId = userId });
     }
+
+    public async Task<IEnumerable<int>> GetProjectedSourceIdsAsync(int userId, TransactionCategory category)
+    {
+        using var conn = Connect();
+        return await conn.QueryAsync<int>("""
+            SELECT DISTINCT ReferenceId FROM CashFlowTransactions
+            WHERE UserId = @UserId AND Category = @Category
+              AND IsProjected = 1 AND ReferenceId IS NOT NULL
+            """, new { UserId = userId, Category = (int)category });
+    }
+
+    public async Task<IEnumerable<int>> GetProjectedGroupIdsAsync(int userId)
+    {
+        using var conn = Connect();
+        return await conn.QueryAsync<int>("""
+            SELECT DISTINCT DebtGroupId FROM CashFlowTransactions
+            WHERE UserId = @UserId AND IsProjected = 1 AND DebtGroupId IS NOT NULL
+            """, new { UserId = userId });
+    }
 }

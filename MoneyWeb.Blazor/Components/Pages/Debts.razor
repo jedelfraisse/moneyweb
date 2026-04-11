@@ -48,6 +48,14 @@ else
                         <span class="badge bg-secondary ms-2">@group.BankAccount.Name</span>
                     }
                     <span class="ms-2 text-muted small">Budget: @group.MonthlyBudget.ToString("C")/mo</span>
+                    @if (_pushedGroupIds.Contains(group.Id))
+                    {
+                        <span class="badge bg-success ms-2" title="Projected payments are in Cash Flow">✓ Pushed</span>
+                    }
+                    else if (group.BankAccountId.HasValue || group.Debts.Any(d => d.BankAccountId.HasValue))
+                    {
+                        <span class="badge bg-light text-muted border ms-2" title="No projections in Cash Flow yet">Not pushed</span>
+                    }
                     @if (overBudget)
                     {
                         var shortfall = minSum - group.MonthlyBudget;
@@ -305,6 +313,10 @@ else
                             @if (debt.BankAccount is not null)
                             {
                                 <span class="text-muted small">@debt.BankAccount.Name</span>
+                                @if (_pushedDebtIds.Contains(debt.Id))
+                                {
+                                    <span class="badge bg-success ms-1" title="Projected payments are in Cash Flow">✓</span>
+                                }
                                 <button class="btn btn-sm btn-outline-success ms-1 px-1 py-0"
                                         title="Push projected payments to cash flow"
                                         @onclick="() => PushUngroupedDebt(debt)">↑</button>
@@ -657,6 +669,8 @@ else
     private List<Debt> _ungrouped = [];
     private List<BankAccount> _bankAccounts = [];
     private Dictionary<int, DebtPayoffResult> _payoffResults = [];
+    private HashSet<int> _pushedGroupIds = [];
+    private HashSet<int> _pushedDebtIds = [];
 
     // Group modal
     private bool _showGroupModal;
@@ -702,6 +716,9 @@ else
 
         var allDebts = (await DebtRepo.GetAllAsync(_userId, activeOnly: true)).ToList();
         _ungrouped = allDebts.Where(d => d.GroupId is null).ToList();
+
+        _pushedGroupIds = [.. await CashFlowRepo.GetProjectedGroupIdsAsync(_userId)];
+        _pushedDebtIds  = [.. await CashFlowRepo.GetProjectedSourceIdsAsync(_userId, TransactionCategory.DebtPayment)];
 
         _loading = false;
     }
@@ -753,12 +770,12 @@ else
         if (string.IsNullOrWhiteSpace(_editingGroup.Name)) { _groupError = "Name is required."; return; }
         _editingGroup.UserId = _userId;
 
-        bool needsRegen = _editingGroup.Id != 0
-            && _editingGroup.BankAccountId.HasValue
+        bool isNew = _editingGroup.Id == 0;
+        bool strategyOrBudgetChanged = !isNew
             && (_editingGroup.Strategy != _originalStrategy || _editingGroup.MonthlyBudget != _originalBudget);
 
-        // If regen needed and we haven't checked for manual overrides yet, do so
-        if (needsRegen && !_showRegenWarning)
+        // Warn before overwriting manual overrides when strategy/budget changes on an existing group
+        if (strategyOrBudgetChanged && !_showRegenWarning)
         {
             _manualOverrideCount = await CashFlowRepo.CountManualOverridesAsync(_editingGroup.Id, _userId);
             if (_manualOverrideCount > 0)
@@ -768,7 +785,7 @@ else
             }
         }
 
-        if (_editingGroup.Id == 0)
+        if (isNew)
             await GroupRepo.CreateAsync(_editingGroup);
         else
             await GroupRepo.UpdateAsync(_editingGroup);
@@ -777,8 +794,8 @@ else
         _showRegenWarning = false;
         await LoadAsync();
 
-        // Regenerate projected cash flow transactions if strategy/budget changed
-        if (needsRegen)
+        // Always regenerate projected cash flow when a bank account is assigned
+        if (_editingGroup.BankAccountId.HasValue)
             await RegenerateProjectionsAsync(_editingGroup, includeManualOverrides: false);
     }
 
@@ -794,7 +811,9 @@ else
 
         _showGroupModal = false;
         await LoadAsync();
-        await RegenerateProjectionsAsync(_editingGroup, includeManualOverrides: true);
+
+        if (_editingGroup.BankAccountId.HasValue)
+            await RegenerateProjectionsAsync(_editingGroup, includeManualOverrides: true);
     }
 
     private async Task PushProjections(DebtGroup group)
@@ -848,6 +867,7 @@ else
             });
 
         await CashFlowRepo.BulkInsertProjectedAsync(transactions);
+        _pushedGroupIds.Add(group.Id);
     }
 
     private async Task PushUngroupedDebt(Debt debt)
@@ -880,6 +900,7 @@ else
         });
 
         await CashFlowRepo.BulkInsertProjectedAsync(transactions);
+        _pushedDebtIds.Add(debt.Id);
     }
 
     private void ConfirmDeleteGroup(DebtGroup g) => _deleteGroupTarget = g;
