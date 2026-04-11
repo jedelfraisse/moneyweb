@@ -2,7 +2,7 @@ using FluentMigrator;
 
 namespace MoneyWeb.Data.Migrations;
 
-[Migration(20260411008)]
+[Migration(20260411010)]
 public class M015_AddIsSubmitted : Migration
 {
     public override void Up()
