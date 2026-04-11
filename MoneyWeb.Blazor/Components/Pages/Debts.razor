@@ -825,6 +825,8 @@ else
         var schedule = result.ForStrategy(group.Strategy).PaymentSchedule
             .Where(p => p.Date <= cutoff);
 
+        var autoDraftDebts = grp.Debts.ToDictionary(d => d.Id, d => d.PaymentMethod == DebtPaymentMethod.AutoDraft);
+
         var transactions = schedule
             .Where(p => effectiveBanks.TryGetValue(p.DebtId, out var bid) && bid.HasValue)
             .Select(p => new CashFlowTransaction
@@ -841,6 +843,7 @@ else
                 DebtGroupId = group.Id,
                 IsProjected = true,
                 IsManualOverride = false,
+                IsAutoDraft = autoDraftDebts.TryGetValue(p.DebtId, out var isAuto) && isAuto,
                 GeneratedByStrategy = group.Strategy
             });
 
@@ -872,6 +875,7 @@ else
             DebtGroupId = null,
             IsProjected = true,
             IsManualOverride = false,
+            IsAutoDraft = debt.PaymentMethod == DebtPaymentMethod.AutoDraft,
             GeneratedByStrategy = PayoffStrategy.MinimumOnly
         });
 

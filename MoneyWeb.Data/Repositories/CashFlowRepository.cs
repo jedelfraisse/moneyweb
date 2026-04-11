@@ -62,16 +62,17 @@ public class CashFlowRepository(string connectionString) : ICashFlowRepository
         const string sql = """
             INSERT INTO CashFlowTransactions
                 (UserId, BankAccountId, TransactionDate, Description, Amount, Category,
-                 ReferenceId, DebtGroupId, IsProjected, IsManualOverride, GeneratedByStrategy, CreatedAt, UpdatedAt)
+                 ReferenceId, DebtGroupId, IsProjected, IsManualOverride, IsAutoDraft, GeneratedByStrategy, CreatedAt, UpdatedAt)
             VALUES
                 (@UserId, @BankAccountId, @TransactionDate, @Description, @Amount, @Category,
-                 @ReferenceId, @DebtGroupId, 1, 0, @GeneratedByStrategy, GETUTCDATE(), GETUTCDATE())
+                 @ReferenceId, @DebtGroupId, 1, 0, @IsAutoDraft, @GeneratedByStrategy, GETUTCDATE(), GETUTCDATE())
             """;
         foreach (var t in transactions)
             await conn.ExecuteAsync(sql, new
             {
                 t.UserId, t.BankAccountId, t.TransactionDate, t.Description,
                 t.Amount, Category = (int)t.Category, t.ReferenceId, t.DebtGroupId,
+                t.IsAutoDraft,
                 GeneratedByStrategy = t.GeneratedByStrategy.HasValue ? (int?)t.GeneratedByStrategy.Value : null
             }, tx);
         tx.Commit();
@@ -85,6 +86,16 @@ public class CashFlowRepository(string connectionString) : ICashFlowRepository
             SET TransactionDate = @Date, IsManualOverride = 1, UpdatedAt = GETUTCDATE()
             WHERE Id = @Id AND UserId = @UserId
             """, new { Id = id, UserId = userId, Date = newDate });
+    }
+
+    public async Task MarkAsProcessedAsync(int id, int userId)
+    {
+        using var conn = Connect();
+        await conn.ExecuteAsync("""
+            UPDATE CashFlowTransactions
+            SET IsProjected = 0, UpdatedAt = GETUTCDATE()
+            WHERE Id = @Id AND UserId = @UserId
+            """, new { Id = id, UserId = userId });
     }
 
     public async Task DeleteAsync(int id, int userId)

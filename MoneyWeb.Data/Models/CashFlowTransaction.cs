@@ -13,6 +13,7 @@ public class CashFlowTransaction
     public int? DebtGroupId { get; set; }           // which debt group generated this row (for bulk regen)
     public bool IsProjected { get; set; } = true;   // false = confirmed via bank/manual entry
     public bool IsManualOverride { get; set; }      // user customised this date — skip on auto-regen
+    public bool IsAutoDraft { get; set; }           // vendor pulls automatically; date is fixed
     public PayoffStrategy? GeneratedByStrategy { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }

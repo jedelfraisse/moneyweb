@@ -66,23 +66,10 @@ else
                         {
                             <tr class="@(row.Transaction.IsManualOverride ? "table-warning" : "")">
                                 <td class="text-nowrap">
-                                    @if (_changingDateId == row.Transaction.Id)
-                                    {
-                                        <input type="date" class="form-control form-control-sm" style="width:150px"
-                                               value="@row.Transaction.TransactionDate.ToString("yyyy-MM-dd")"
-                                               @onchange="e => OverrideDate(row.Transaction, e.Value?.ToString())" />
-                                    }
-                                    else
-                                    {
-                                        @row.Transaction.TransactionDate.ToString("MMM d, yyyy")
-                                    }
+                                    @row.Transaction.TransactionDate.ToString("MMM d, yyyy")
                                 </td>
                                 <td>
                                     @row.Transaction.Description
-                                    @if (row.Transaction.IsManualOverride)
-                                    {
-                                        <span class="badge bg-warning text-dark ms-1" title="Date manually overridden">Custom</span>
-                                    }
                                 </td>
                                 <td class="text-end fw-semibold @(row.Transaction.Amount >= 0 ? "text-success" : "text-danger")">
                                     @row.Transaction.Amount.ToString("C")
@@ -91,13 +78,21 @@ else
                                     @row.RunningBalance.ToString("C")
                                 </td>
                                 <td class="text-center">
-                                    @if (row.Transaction.IsProjected)
+                                    @if (!row.Transaction.IsProjected)
                                     {
-                                        <span class="badge bg-secondary">Projected</span>
+                                        <span class="badge bg-success">Confirmed</span>
+                                    }
+                                    else if (row.Transaction.IsAutoDraft)
+                                    {
+                                        <span class="badge bg-info text-dark" title="Vendor pulls this automatically — date is fixed">Auto-Draft</span>
+                                    }
+                                    else if (row.Transaction.IsManualOverride)
+                                    {
+                                        <span class="badge bg-warning text-dark" title="Custom date set">Manual – Custom Date</span>
                                     }
                                     else
                                     {
-                                        <span class="badge bg-success">Confirmed</span>
+                                        <span class="badge bg-secondary">Manual – Projected</span>
                                     }
                                 </td>
                                 <td class="text-end text-nowrap">
@@ -105,14 +100,22 @@ else
                                     {
                                         @if (_changingDateId == row.Transaction.Id)
                                         {
+                                            <input type="date" class="form-control form-control-sm d-inline-block me-1" style="width:150px"
+                                                   value="@row.Transaction.TransactionDate.ToString("yyyy-MM-dd")"
+                                                   @onchange="e => OverrideDate(row.Transaction, e.Value?.ToString())" />
                                             <button class="btn btn-sm btn-outline-secondary" @onclick="() => _changingDateId = null">Cancel</button>
                                         }
                                         else
                                         {
-                                            <button class="btn btn-sm btn-outline-secondary me-1" title="Change date"
-                                                    @onclick="() => _changingDateId = row.Transaction.Id">📅</button>
-                                            <button class="btn btn-sm btn-outline-danger" title="Remove"
-                                                    @onclick="() => DeleteTransaction(row.Transaction)">✕</button>
+                                            @if (!row.Transaction.IsAutoDraft)
+                                            {
+                                                <button class="btn btn-sm btn-outline-secondary me-1" title="Change date"
+                                                        @onclick="() => _changingDateId = row.Transaction.Id">📅</button>
+                                            }
+                                            <button class="btn btn-sm btn-outline-success me-1" title="Mark as processed — payment already made"
+                                                    @onclick="() => MarkProcessed(row.Transaction)">✓</button>
+                                            <button class="btn btn-sm btn-outline-danger" title="Skip this projected payment"
+                                                    @onclick="() => SkipTransaction(row.Transaction)">Skip</button>
                                         }
                                     }
                                 </td>
@@ -200,7 +203,13 @@ else
         await LoadAsync();
     }
 
-    private async Task DeleteTransaction(CashFlowTransaction t)
+    private async Task MarkProcessed(CashFlowTransaction t)
+    {
+        await CashFlowRepo.MarkAsProcessedAsync(t.Id, _userId);
+        await LoadAsync();
+    }
+
+    private async Task SkipTransaction(CashFlowTransaction t)
     {
         await CashFlowRepo.DeleteAsync(t.Id, _userId);
         await LoadAsync();
