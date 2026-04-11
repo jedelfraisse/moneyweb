@@ -50,9 +50,16 @@ else
                     <span class="ms-2 text-muted small">Budget: @group.MonthlyBudget.ToString("C")/mo</span>
                     @if (overBudget)
                     {
+                        var shortfall = minSum - group.MonthlyBudget;
+                        var coveredBudget = Math.Ceiling(minSum);
                         <span class="badge bg-danger ms-2" title="Minimum payments exceed budget">
-                            Budget short @((minSum - group.MonthlyBudget).ToString("C"))
+                            Budget short @shortfall.ToString("C")
                         </span>
+                        <button class="btn btn-sm btn-outline-warning ms-1"
+                                title="Set budget to @coveredBudget.ToString("C") to cover all minimum payments"
+                                @onclick="() => CoverShortfall(group, coveredBudget)">
+                            Cover → @coveredBudget.ToString("C")
+                        </button>
                     }
                 </div>
                 <div class="d-flex gap-2 align-items-center">
@@ -727,6 +734,18 @@ else
     {
         _showGroupModal = false;
         _showRegenWarning = false;
+    }
+
+    private async Task CoverShortfall(DebtGroup group, decimal newBudget)
+    {
+        var updated = new DebtGroup
+        {
+            Id = group.Id, UserId = _userId, Name = group.Name,
+            BankAccountId = group.BankAccountId, Strategy = group.Strategy,
+            MonthlyBudget = newBudget, Notes = group.Notes
+        };
+        await GroupRepo.UpdateAsync(updated);
+        await LoadAsync();
     }
 
     private async Task SaveGroup()
