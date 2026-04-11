@@ -29,6 +29,7 @@ public static class DataServiceExtensions
 
         // Services
         services.AddSingleton<DebtPayoffService>();
+        services.AddSingleton<BillProjectionService>();
 
         // FluentMigrator
         services.AddFluentMigratorCore()
