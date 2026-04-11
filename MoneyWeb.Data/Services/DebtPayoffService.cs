@@ -65,7 +65,6 @@ public class DebtPayoffService
         {
             month++;
             decimal budgetRemaining = monthlyBudget;
-            var totalBefore = balances.Values.Sum();
 
             // Accrue interest on all active balances
             foreach (var debt in debts)
@@ -130,10 +129,9 @@ public class DebtPayoffService
                 }
             }
 
-            // If total balance didn't decrease, payments can't cover interest — won't ever pay off
-            var totalAfter = balances.Values.Sum();
-            if (totalAfter >= totalBefore && month > 1)
-                break;
+            // Any debt whose minimum payment can't cover interest will never reach zero.
+            // The maxMonths cap (600 months / 50 years) handles termination in that case,
+            // which correctly produces a large total-interest figure for MinimumOnly.
         }
 
         // Any debts still not paid off get max date

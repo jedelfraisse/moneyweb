@@ -38,6 +38,12 @@ public class Debt
     /// <summary>Total monthly outflow: minimum payment + all active fees.</summary>
     public decimal TotalMonthlyPayment => MinimumPayment + TotalMonthlyFees;
 
+    /// <summary>Monthly interest accrued on the current balance.</summary>
+    public decimal MonthlyInterest => Math.Round(Balance * InterestRate / 12m, 2);
+
+    /// <summary>True when the minimum payment doesn't cover monthly interest — the balance will grow indefinitely.</summary>
+    public bool IsMinBelowInterest => Balance > 0 && InterestRate > 0 && MinimumPayment < MonthlyInterest;
+
     /// <summary>
     /// Next upcoming occurrence of PaymentDayOfMonth on or after today.
     /// Returns null when no payment day is configured.

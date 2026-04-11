@@ -147,7 +147,14 @@ else
                                     <td>@debt.Name</td>
                                     <td class="text-end">@debt.Balance.ToString("C")</td>
                                     <td class="text-end">@((debt.InterestRate * 100).ToString("F2"))%</td>
-                                    <td class="text-end">@debt.MinimumPayment.ToString("C")</td>
+                                    <td class="text-end @(debt.IsMinBelowInterest ? "table-danger" : "")">
+                                        @debt.MinimumPayment.ToString("C")
+                                        @if (debt.IsMinBelowInterest)
+                                        {
+                                            var tip = $"Min payment ({debt.MinimumPayment:C}) does not cover monthly interest ({debt.MonthlyInterest:C}) — balance will keep growing!";
+                                            <span title="@tip" class="ms-1">⚠️</span>
+                                        }
+                                    </td>
                                     <td class="text-end text-muted small">@(debt.TotalMonthlyFees > 0 ? debt.TotalMonthlyFees.ToString("C") : "—")</td>
                                     <td class="text-end fw-semibold">@debt.TotalMonthlyPayment.ToString("C")</td>
                                     <td class="text-end fw-semibold">
@@ -206,7 +213,7 @@ else
                         <tfoot>
                             <tr class="fw-bold">
                                 <td></td>
-                                <td colspan="2">Group Total</td>
+                                <td>Group Total</td>
                                 <td class="text-end">@group.Debts.Sum(d => d.Balance).ToString("C")</td>
                                 <td></td>
                                 <td class="text-end">@group.Debts.Sum(d => d.MinimumPayment).ToString("C")</td>
@@ -263,7 +270,14 @@ else
                         <td>@debt.Name</td>
                         <td class="text-end">@debt.Balance.ToString("C")</td>
                         <td class="text-end">@((debt.InterestRate * 100).ToString("F2"))%</td>
-                        <td class="text-end">@debt.MinimumPayment.ToString("C")</td>
+                        <td class="text-end @(debt.IsMinBelowInterest ? "table-danger" : "")">
+                            @debt.MinimumPayment.ToString("C")
+                            @if (debt.IsMinBelowInterest)
+                            {
+                            var tipU = $"Min payment ({debt.MinimumPayment:C}) does not cover monthly interest ({debt.MonthlyInterest:C}) — balance will keep growing!";
+                            <span title="@tipU" class="ms-1">⚠️</span>
+                            }
+                        </td>
                         <td class="text-end text-muted small">@(debt.TotalMonthlyFees > 0 ? debt.TotalMonthlyFees.ToString("C") : "—")</td>
                         <td class="text-end fw-semibold">@debt.TotalMonthlyPayment.ToString("C")</td>
                         <td class="text-center">
