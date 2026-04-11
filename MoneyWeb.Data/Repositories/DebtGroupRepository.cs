@@ -74,7 +74,7 @@ public class DebtGroupRepository(string connectionString) : IDebtGroupRepository
             new { UserId = userId, GroupId = groupId },
             splitOn: "Id,Id");
 
-        // Load fees for all debts in the result
+        // Load fees and debt-level bank accounts for all debts in the result
         var allDebts = groupDict.Values.SelectMany(g => g.Debts).ToList();
         if (allDebts.Count > 0)
         {
@@ -86,6 +86,18 @@ public class DebtGroupRepository(string connectionString) : IDebtGroupRepository
             foreach (var debt in allDebts)
                 if (feesByDebt.TryGetValue(debt.Id, out var df))
                     debt.Fees = df;
+
+            var bankIds = allDebts.Where(d => d.BankAccountId.HasValue)
+                                  .Select(d => d.BankAccountId!.Value).Distinct().ToList();
+            if (bankIds.Count > 0)
+            {
+                var accounts = (await conn.QueryAsync<BankAccount>(
+                    "SELECT * FROM BankAccounts WHERE Id IN @Ids", new { Ids = bankIds }))
+                    .ToDictionary(a => a.Id);
+                foreach (var debt in allDebts)
+                    if (debt.BankAccountId.HasValue && accounts.TryGetValue(debt.BankAccountId.Value, out var acct))
+                        debt.BankAccount = acct;
+            }
         }
 
         return groupDict.Values;

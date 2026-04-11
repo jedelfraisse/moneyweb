@@ -17,6 +17,7 @@ public class DebtRepository(string connectionString) : IDebtRepository
             : "SELECT * FROM Debts WHERE UserId = @UserId ORDER BY InterestRate DESC";
         var debts = (await conn.QueryAsync<Debt>(sql, new { UserId = userId })).ToList();
         await AttachFeesAsync(conn, debts, userId);
+        await AttachBankAccountsAsync(conn, debts);
         return debts;
     }
 
@@ -31,10 +32,10 @@ public class DebtRepository(string connectionString) : IDebtRepository
     {
         using var conn = Connect();
         var sql = """
-            INSERT INTO Debts (UserId, GroupId, GroupSortOrder, Name, Lender, Balance, InterestRate, MinimumPayment,
+            INSERT INTO Debts (UserId, GroupId, GroupSortOrder, BankAccountId, Name, Lender, Balance, InterestRate, MinimumPayment,
                                IsFixedPayment, PaymentDayOfMonth, LastPaymentDate, PaymentMethod, PayoffDate, IsActive, CreatedAt, UpdatedAt)
             OUTPUT INSERTED.Id
-            VALUES (@UserId, @GroupId, @GroupSortOrder, @Name, @Lender, @Balance, @InterestRate, @MinimumPayment,
+            VALUES (@UserId, @GroupId, @GroupSortOrder, @BankAccountId, @Name, @Lender, @Balance, @InterestRate, @MinimumPayment,
                     @IsFixedPayment, @PaymentDayOfMonth, @LastPaymentDate, @PaymentMethod, @PayoffDate, @IsActive, GETUTCDATE(), GETUTCDATE())
             """;
         return await conn.ExecuteScalarAsync<int>(sql, debt);
@@ -45,7 +46,7 @@ public class DebtRepository(string connectionString) : IDebtRepository
         using var conn = Connect();
         var sql = """
             UPDATE Debts SET
-                GroupId = @GroupId, GroupSortOrder = @GroupSortOrder,
+                GroupId = @GroupId, GroupSortOrder = @GroupSortOrder, BankAccountId = @BankAccountId,
                 Name = @Name, Lender = @Lender, Balance = @Balance,
                 InterestRate = @InterestRate, MinimumPayment = @MinimumPayment,
                 IsFixedPayment = @IsFixedPayment,
@@ -109,6 +110,19 @@ public class DebtRepository(string connectionString) : IDebtRepository
         foreach (var debt in debts)
             if (feesByDebt.TryGetValue(debt.Id, out var df))
                 debt.Fees = df;
+    }
+
+    private static async Task AttachBankAccountsAsync(SqlConnection conn, List<Debt> debts)
+    {
+        if (debts.Count == 0) return;
+        var ids = debts.Where(d => d.BankAccountId.HasValue).Select(d => d.BankAccountId!.Value).Distinct().ToList();
+        if (ids.Count == 0) return;
+        var accounts = (await conn.QueryAsync<BankAccount>(
+            "SELECT * FROM BankAccounts WHERE Id IN @Ids", new { Ids = ids }))
+            .ToDictionary(a => a.Id);
+        foreach (var debt in debts)
+            if (debt.BankAccountId.HasValue && accounts.TryGetValue(debt.BankAccountId.Value, out var acct))
+                debt.BankAccount = acct;
     }
 
     public async Task<IEnumerable<DebtFee>> GetFeesAsync(int debtId, int userId)

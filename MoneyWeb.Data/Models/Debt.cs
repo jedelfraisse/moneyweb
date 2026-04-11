@@ -12,6 +12,7 @@ public class Debt
     public int UserId { get; set; }
     public int? GroupId { get; set; }
     public int GroupSortOrder { get; set; }
+    public int? BankAccountId { get; set; }
     public string Name { get; set; } = string.Empty;
     public string? Lender { get; set; }
     public decimal Balance { get; set; }
@@ -29,6 +30,7 @@ public class Debt
 
     // Navigation — fees loaded separately by repository
     public List<DebtFee> Fees { get; set; } = [];
+    public BankAccount? BankAccount { get; set; }
 
     /// <summary>Sum of all active fees (taxes, insurance, etc.) not counted toward balance reduction.</summary>
     public decimal TotalMonthlyFees => Fees.Where(f => f.IsActive).Sum(f => f.Amount);
