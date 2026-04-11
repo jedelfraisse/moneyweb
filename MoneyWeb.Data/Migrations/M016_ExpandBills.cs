@@ -7,9 +7,8 @@ public class M016_ExpandBills : Migration
 {
     public override void Up()
     {
-        // Expand Bills table
+        // Expand Bills table (UserId already added in M002)
         Alter.Table("Bills")
-            .AddColumn("UserId").AsInt32().NotNullable().WithDefaultValue(0)
             .AddColumn("Category").AsInt32().NotNullable().WithDefaultValue(0)
             .AddColumn("PaymentMethod").AsInt32().NotNullable().WithDefaultValue(1)   // 1 = Manual
             .AddColumn("BankAccountId").AsInt32().Nullable()
@@ -47,6 +46,5 @@ public class M016_ExpandBills : Migration
         Delete.Column("BankAccountId").FromTable("Bills");
         Delete.Column("PaymentMethod").FromTable("Bills");
         Delete.Column("Category").FromTable("Bills");
-        Delete.Column("UserId").FromTable("Bills");
     }
 }
