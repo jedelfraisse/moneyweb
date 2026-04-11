@@ -11,7 +11,8 @@ public class CashFlowTransaction
     public TransactionCategory Category { get; set; }
     public int? ReferenceId { get; set; }           // FK to Debt, Bill, Income, or Loan depending on Category
     public int? DebtGroupId { get; set; }           // which debt group generated this row (for bulk regen)
-    public bool IsProjected { get; set; } = true;   // false = confirmed via bank/manual entry
+    public bool IsProjected { get; set; } = true;   // false = confirmed/cleared
+    public bool IsSubmitted { get; set; }           // user notified vendor; awaiting clearance
     public bool IsManualOverride { get; set; }      // user customised this date — skip on auto-regen
     public bool IsAutoDraft { get; set; }           // vendor pulls automatically; date is fixed
     public PayoffStrategy? GeneratedByStrategy { get; set; }

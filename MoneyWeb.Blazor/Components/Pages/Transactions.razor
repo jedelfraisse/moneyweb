@@ -30,16 +30,19 @@ else
 
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h1 class="mb-0">@_account.Name <span class="text-muted fs-5">Cash Flow</span></h1>
-        <div>
-            <span class="text-muted small me-2">Current balance:</span>
-            <span class="fw-bold fs-5">@_account.CurrentBalance.ToString("C")</span>
+        <div class="d-flex align-items-center gap-3">
+            <div>
+                <span class="text-muted small me-2">Current balance:</span>
+                <span class="fw-bold fs-5">@_account.CurrentBalance.ToString("C")</span>
+            </div>
+            <button class="btn btn-primary" @onclick="OpenAddModal">+ Add Transaction</button>
         </div>
     </div>
 
     @if (!_months.Any())
     {
         <div class="alert alert-info">
-            No projected transactions yet. Assign a bank account to a debt group and the payment schedule will appear here automatically.
+            No transactions yet. Add one manually or assign a bank account to a debt group and push from the Debts page.
         </div>
     }
     else
@@ -64,58 +67,81 @@ else
                         </tr>
                         @foreach (var row in month.Rows)
                         {
-                            <tr class="@(row.Transaction.IsManualOverride ? "table-warning" : "")">
+                            var t = row.Transaction;
+                            var rowClass = (!t.IsProjected) ? "" :
+                                          t.IsSubmitted ? "table-info" :
+                                          t.IsManualOverride ? "table-warning" : "";
+                            <tr class="@rowClass">
                                 <td class="text-nowrap">
-                                    @row.Transaction.TransactionDate.ToString("MMM d, yyyy")
+                                    @t.TransactionDate.ToString("MMM d, yyyy")
                                 </td>
-                                <td>
-                                    @row.Transaction.Description
-                                </td>
-                                <td class="text-end fw-semibold @(row.Transaction.Amount >= 0 ? "text-success" : "text-danger")">
-                                    @row.Transaction.Amount.ToString("C")
+                                <td>@t.Description</td>
+                                <td class="text-end fw-semibold @(t.Amount >= 0 ? "text-success" : "text-danger")">
+                                    @t.Amount.ToString("C")
                                 </td>
                                 <td class="text-end @(row.RunningBalance < 0 ? "text-danger fw-bold" : "")">
                                     @row.RunningBalance.ToString("C")
                                 </td>
                                 <td class="text-center">
-                                    @if (!row.Transaction.IsProjected)
+                                    @if (!t.IsProjected)
                                     {
-                                        <span class="badge bg-success">Confirmed</span>
+                                        <span class="badge bg-success">✅ Confirmed</span>
                                     }
-                                    else if (row.Transaction.IsAutoDraft)
+                                    else if (t.IsSubmitted && t.IsAutoDraft)
                                     {
-                                        <span class="badge bg-info text-dark" title="Vendor pulls this automatically — date is fixed">Auto-Draft</span>
+                                        <span class="badge bg-info text-dark">Auto-Draft – Submitted</span>
                                     }
-                                    else if (row.Transaction.IsManualOverride)
+                                    else if (t.IsSubmitted)
                                     {
-                                        <span class="badge bg-warning text-dark" title="Custom date set">Manual – Custom Date</span>
+                                        <span class="badge bg-warning text-dark" title="Payment submitted to vendor — awaiting clearance">📤 Submitted – Pending</span>
+                                    }
+                                    else if (t.IsAutoDraft)
+                                    {
+                                        <span class="badge bg-info text-dark" title="Vendor pulls automatically — date is fixed">Auto-Draft</span>
+                                    }
+                                    else if (t.IsManualOverride)
+                                    {
+                                        <span class="badge bg-warning text-dark">Manual – Custom Date</span>
                                     }
                                     else
                                     {
-                                        <span class="badge bg-secondary">Manual – Projected</span>
+                                        <span class="badge bg-secondary">Projected</span>
                                     }
                                 </td>
                                 <td class="text-end text-nowrap">
-                                    @if (row.Transaction.IsProjected)
+                                    @if (t.IsProjected)
                                     {
-                                        @if (_changingDateId == row.Transaction.Id)
+                                        @if (_submittingId == t.Id)
                                         {
-                                            <input type="date" class="form-control form-control-sm d-inline-block me-1" style="width:150px"
-                                                   value="@row.Transaction.TransactionDate.ToString("yyyy-MM-dd")"
-                                                   @onchange="e => OverrideDate(row.Transaction, e.Value?.ToString())" />
+                                            <span class="me-1 text-muted small">Submitted on:</span>
+                                            <input type="date" class="form-control form-control-sm d-inline-block me-1" style="width:145px"
+                                                   @bind="_submitDate" @bind:format="yyyy-MM-dd" />
+                                            <button class="btn btn-sm btn-info me-1" @onclick="() => ConfirmSubmit(t)">Confirm</button>
+                                            <button class="btn btn-sm btn-outline-secondary" @onclick="CancelSubmit">Cancel</button>
+                                        }
+                                        else if (_changingDateId == t.Id)
+                                        {
+                                            <input type="date" class="form-control form-control-sm d-inline-block me-1" style="width:145px"
+                                                   value="@t.TransactionDate.ToString("yyyy-MM-dd")"
+                                                   @onchange="e => OverrideDate(t, e.Value?.ToString())" />
                                             <button class="btn btn-sm btn-outline-secondary" @onclick="() => _changingDateId = null">Cancel</button>
                                         }
                                         else
                                         {
-                                            @if (!row.Transaction.IsAutoDraft)
+                                            @if (!t.IsAutoDraft && !t.IsSubmitted)
                                             {
                                                 <button class="btn btn-sm btn-outline-secondary me-1" title="Change date"
-                                                        @onclick="() => _changingDateId = row.Transaction.Id">📅</button>
+                                                        @onclick="() => _changingDateId = t.Id">📅</button>
                                             }
-                                            <button class="btn btn-sm btn-outline-success me-1" title="Mark as processed — payment already made"
-                                                    @onclick="() => MarkProcessed(row.Transaction)">✓</button>
-                                            <button class="btn btn-sm btn-outline-danger" title="Skip this projected payment"
-                                                    @onclick="() => SkipTransaction(row.Transaction)">Skip</button>
+                                            @if (!t.IsSubmitted)
+                                            {
+                                                <button class="btn btn-sm btn-outline-warning me-1" title="I told the vendor — record the submitted date"
+                                                        @onclick="() => BeginSubmit(t.Id)">📤 Submit</button>
+                                            }
+                                            <button class="btn btn-sm btn-outline-success me-1" title="Payment cleared/confirmed"
+                                                    @onclick="() => MarkProcessed(t)">✓</button>
+                                            <button class="btn btn-sm btn-outline-danger" title="Skip / remove this projected entry"
+                                                    @onclick="() => SkipTransaction(t)">Skip</button>
                                         }
                                     }
                                 </td>
@@ -144,6 +170,58 @@ else
     }
 }
 
+@* ── Add Manual Transaction Modal ── *@
+@if (_showAddModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.5)">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Add Transaction</h5>
+                    <button class="btn-close" @onclick="CloseAddModal"></button>
+                </div>
+                <div class="modal-body">
+                    @if (_addError is not null)
+                    {
+                        <div class="alert alert-danger">@_addError</div>
+                    }
+                    <div class="mb-3">
+                        <label class="form-label">Date</label>
+                        <input class="form-control" type="date" @bind="_newDate" @bind:format="yyyy-MM-dd" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Description</label>
+                        <input class="form-control" type="text" @bind="_newDesc" placeholder="e.g. Electric bill, Grocery run…" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Type</label>
+                        <div class="btn-group w-100" role="group">
+                            <input type="radio" class="btn-check" id="typePayment" name="txType"
+                                   checked="@(!_newIsDeposit)" @onchange="() => _newIsDeposit = false" />
+                            <label class="btn btn-outline-danger" for="typePayment">💸 Payment (outflow)</label>
+                            <input type="radio" class="btn-check" id="typeDeposit" name="txType"
+                                   checked="@_newIsDeposit" @onchange="() => _newIsDeposit = true" />
+                            <label class="btn btn-outline-success" for="typeDeposit">💰 Deposit (inflow)</label>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Amount</label>
+                        <div class="input-group">
+                            <span class="input-group-text">$</span>
+                            <input class="form-control" type="number" step="0.01" min="0"
+                                   @bind="_newAmount" placeholder="0.00" />
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CloseAddModal">Cancel</button>
+                    <button class="btn btn-primary" @onclick="SaveManualTransaction">Add</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     [Parameter] public int BankAccountId { get; set; }
 
@@ -153,6 +231,18 @@ else
     private List<MonthGroup> _months = [];
     private decimal _finalBalance;
     private int? _changingDateId;
+
+    // Submit flow
+    private int? _submittingId;
+    private DateOnly _submitDate;
+
+    // Add manual transaction modal
+    private bool _showAddModal;
+    private string _newDesc = "";
+    private decimal _newAmount;
+    private DateOnly _newDate;
+    private bool _newIsDeposit;
+    private string? _addError;
 
     private record TransactionRow(CashFlowTransaction Transaction, decimal RunningBalance);
     private record MonthGroup(string Label, List<TransactionRow> Rows, decimal Subtotal);
@@ -192,6 +282,7 @@ else
 
         _finalBalance = running;
         _changingDateId = null;
+        _submittingId = null;
         _loading = false;
     }
 
@@ -200,6 +291,22 @@ else
         if (!DateOnly.TryParse(value, out var newDate)) return;
         await CashFlowRepo.UpdateManualOverrideDateAsync(t.Id, _userId, newDate);
         _changingDateId = null;
+        await LoadAsync();
+    }
+
+    private void BeginSubmit(int id)
+    {
+        _submittingId = id;
+        _submitDate = DateOnly.FromDateTime(DateTime.Today);
+        _changingDateId = null;
+    }
+
+    private void CancelSubmit() => _submittingId = null;
+
+    private async Task ConfirmSubmit(CashFlowTransaction t)
+    {
+        await CashFlowRepo.MarkAsSubmittedAsync(t.Id, _userId, _submitDate);
+        _submittingId = null;
         await LoadAsync();
     }
 
@@ -214,4 +321,37 @@ else
         await CashFlowRepo.DeleteAsync(t.Id, _userId);
         await LoadAsync();
     }
+
+    private void OpenAddModal()
+    {
+        _newDesc = "";
+        _newAmount = 0;
+        _newDate = DateOnly.FromDateTime(DateTime.Today);
+        _newIsDeposit = false;
+        _addError = null;
+        _showAddModal = true;
+    }
+
+    private void CloseAddModal() => _showAddModal = false;
+
+    private async Task SaveManualTransaction()
+    {
+        if (string.IsNullOrWhiteSpace(_newDesc)) { _addError = "Description is required."; return; }
+        if (_newAmount <= 0) { _addError = "Amount must be greater than zero."; return; }
+
+        var t = new CashFlowTransaction
+        {
+            UserId = _userId,
+            BankAccountId = BankAccountId,
+            TransactionDate = _newDate,
+            Description = _newDesc.Trim(),
+            Amount = _newIsDeposit ? _newAmount : -_newAmount,
+            Category = TransactionCategory.Other,
+            IsProjected = true
+        };
+        await CashFlowRepo.InsertManualAsync(t);
+        _showAddModal = false;
+        await LoadAsync();
+    }
 }
+

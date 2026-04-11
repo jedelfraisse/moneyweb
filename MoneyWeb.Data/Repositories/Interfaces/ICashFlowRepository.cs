@@ -22,8 +22,14 @@ public interface ICashFlowRepository
     /// <summary>Update the date of a single transaction, marking it as a manual override.</summary>
     Task UpdateManualOverrideDateAsync(int id, int userId, DateOnly newDate);
 
+    /// <summary>Mark a projected transaction as submitted to the vendor — awaiting clearance.</summary>
+    Task MarkAsSubmittedAsync(int id, int userId, DateOnly submittedDate);
+
     /// <summary>Mark a projected transaction as confirmed/processed (IsProjected = false).</summary>
     Task MarkAsProcessedAsync(int id, int userId);
+
+    /// <summary>Insert a user-created manual transaction (not tied to any debt or bill).</summary>
+    Task InsertManualAsync(CashFlowTransaction t);
 
     /// <summary>Delete a single transaction (skip/remove from cash flow).</summary>
     Task DeleteAsync(int id, int userId);

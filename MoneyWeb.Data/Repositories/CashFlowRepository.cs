@@ -88,6 +88,16 @@ public class CashFlowRepository(string connectionString) : ICashFlowRepository
             """, new { Id = id, UserId = userId, Date = newDate });
     }
 
+    public async Task MarkAsSubmittedAsync(int id, int userId, DateOnly submittedDate)
+    {
+        using var conn = Connect();
+        await conn.ExecuteAsync("""
+            UPDATE CashFlowTransactions
+            SET IsSubmitted = 1, TransactionDate = @Date, UpdatedAt = GETUTCDATE()
+            WHERE Id = @Id AND UserId = @UserId
+            """, new { Id = id, UserId = userId, Date = submittedDate });
+    }
+
     public async Task MarkAsProcessedAsync(int id, int userId)
     {
         using var conn = Connect();
@@ -96,6 +106,25 @@ public class CashFlowRepository(string connectionString) : ICashFlowRepository
             SET IsProjected = 0, UpdatedAt = GETUTCDATE()
             WHERE Id = @Id AND UserId = @UserId
             """, new { Id = id, UserId = userId });
+    }
+
+    public async Task InsertManualAsync(CashFlowTransaction t)
+    {
+        using var conn = Connect();
+        await conn.ExecuteAsync("""
+            INSERT INTO CashFlowTransactions
+                (UserId, BankAccountId, TransactionDate, Description, Amount, Category,
+                 ReferenceId, DebtGroupId, IsProjected, IsManualOverride, IsAutoDraft, IsSubmitted,
+                 GeneratedByStrategy, CreatedAt, UpdatedAt)
+            VALUES
+                (@UserId, @BankAccountId, @TransactionDate, @Description, @Amount, @Category,
+                 NULL, NULL, 1, 0, 0, 0,
+                 NULL, GETUTCDATE(), GETUTCDATE())
+            """, new
+        {
+            t.UserId, t.BankAccountId, t.TransactionDate, t.Description,
+            t.Amount, Category = (int)t.Category
+        });
     }
 
     public async Task DeleteAsync(int id, int userId)
