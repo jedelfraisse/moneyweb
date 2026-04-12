@@ -1,0 +1,347 @@
+@page "/loans"
+@rendermode InteractiveServer
+@using MoneyWeb.Blazor.Services
+@using MoneyWeb.Data.Models
+@using MoneyWeb.Data.Repositories.Interfaces
+@attribute [Authorize]
+@inject CurrentUserService CurrentUserService
+@inject ILoanRepository LoanRepo
+@inject NavigationManager Nav
+
+<PageTitle>Loans – MoneyWeb</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="mb-0">Loans</h1>
+    <button class="btn btn-primary" @onclick="OpenAdd">+ Add Loan</button>
+</div>
+
+@if (_loading)
+{
+    <p>Loading&hellip;</p>
+}
+else
+{
+    <div class="row g-3 mb-4">
+        <div class="col-sm-4">
+            <div class="card text-center">
+                <div class="card-body">
+                    <div class="text-muted small">Total Lent (Active)</div>
+                    <div class="fs-4 fw-bold">@_active.Sum(l => l.Principal).ToString("C")</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-4">
+            <div class="card text-center">
+                <div class="card-body">
+                    <div class="text-muted small">Total Outstanding</div>
+                    <div class="fs-4 fw-bold">@_active.Sum(l => l.Balance).ToString("C")</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-4">
+            <div class="card text-center">
+                <div class="card-body">
+                    <div class="text-muted small">Active Loans</div>
+                    <div class="fs-4 fw-bold">@_active.Count</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(_errorMessage))
+    {
+        <div class="alert alert-danger alert-dismissible">
+            @_errorMessage
+            <button type="button" class="btn-close" @onclick="() => _errorMessage = null"></button>
+        </div>
+    }
+
+    <h5 class="mb-2">Active Loans</h5>
+    @if (!_active.Any())
+    {
+        <p class="text-muted">No active loans.</p>
+    }
+    else
+    {
+        <div class="table-responsive mb-3">
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Borrower</th><th>Email</th><th class="text-end">Principal</th>
+                        <th class="text-end">Rate</th><th class="text-end">Balance</th>
+                        <th>Loan Date</th><th>Due Date</th><th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var loan in _active)
+                    {
+                        <tr>
+                            <td class="fw-semibold">@loan.Borrower</td>
+                            <td class="text-muted small">@(loan.Email ?? "—")</td>
+                            <td class="text-end">@loan.Principal.ToString("C")</td>
+                            <td class="text-end">@((loan.InterestRate * 100m).ToString("0.##"))%</td>
+                            <td class="text-end fw-semibold @(loan.Balance > 0 ? "text-danger" : "text-success")">@loan.Balance.ToString("C")</td>
+                            <td>@loan.LoanDate.ToString("MMM d, yyyy")</td>
+                            <td>@(loan.ExpectedRepaymentDate?.ToString("MMM d, yyyy") ?? "—")</td>
+                            <td class="text-end text-nowrap">
+                                <a class="btn btn-sm btn-outline-primary me-1" href="/loans/@loan.Id">View</a>
+                                <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => OpenEdit(loan)">Edit</button>
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(loan)">Delete</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    <div class="mt-4">
+        <button class="btn btn-outline-secondary btn-sm mb-2" @onclick="() => _showSettled = !_showSettled">
+            @(_showSettled ? "▲ Hide" : "▼ Show") Settled Loans (@_settled.Count)
+        </button>
+        @if (_showSettled)
+        {
+            @if (!_settled.Any())
+            {
+                <p class="text-muted">No settled loans.</p>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle text-muted">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Borrower</th><th>Email</th><th class="text-end">Principal</th>
+                                <th class="text-end">Rate</th><th class="text-end">Balance</th>
+                                <th>Loan Date</th><th>Due Date</th><th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var loan in _settled)
+                            {
+                                <tr>
+                                    <td class="fw-semibold">@loan.Borrower <span class="badge bg-success ms-1">Settled</span></td>
+                                    <td class="small">@(loan.Email ?? "—")</td>
+                                    <td class="text-end">@loan.Principal.ToString("C")</td>
+                                    <td class="text-end">@((loan.InterestRate * 100m).ToString("0.##"))%</td>
+                                    <td class="text-end">@loan.Balance.ToString("C")</td>
+                                    <td>@loan.LoanDate.ToString("MMM d, yyyy")</td>
+                                    <td>@(loan.ExpectedRepaymentDate?.ToString("MMM d, yyyy") ?? "—")</td>
+                                    <td class="text-end text-nowrap">
+                                        <a class="btn btn-sm btn-outline-primary me-1" href="/loans/@loan.Id">View</a>
+                                        <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => OpenEdit(loan)">Edit</button>
+                                        <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(loan)">Delete</button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        }
+    </div>
+}
+
+@if (_showModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.5)">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@(_editLoan.Id == 0 ? "Add Loan" : "Edit Loan")</h5>
+                    <button type="button" class="btn-close" @onclick="CloseModal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Borrower Name <span class="text-danger">*</span></label>
+                        <input class="form-control" @bind="_editLoan.Borrower" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Email</label>
+                        <input class="form-control" type="email" @bind="_editLoan.Email" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Phone</label>
+                        <input class="form-control" type="tel" @bind="_editLoan.Phone" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Description</label>
+                        <textarea class="form-control" rows="2" @bind="_editLoan.Description"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Principal <span class="text-danger">*</span></label>
+                        <input class="form-control" type="number" step="0.01" min="0" @bind="_editLoan.Principal" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Interest Rate %</label>
+                        <input class="form-control" type="number" step="0.01" min="0" @bind="_interestRatePct" />
+                        <div class="form-text">Enter as percentage, e.g. 5 for 5%</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Loan Date <span class="text-danger">*</span></label>
+                        <input class="form-control" type="date" @bind="_loanDate" @bind:format="yyyy-MM-dd" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Expected Repayment Date</label>
+                        <input class="form-control" type="date" @bind="_repayDate" @bind:format="yyyy-MM-dd" />
+                    </div>
+                    @if (!string.IsNullOrEmpty(_modalError))
+                    {
+                        <div class="alert alert-danger">@_modalError</div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CloseModal">Cancel</button>
+                    <button class="btn btn-primary" @onclick="SaveAsync">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_deleteTarget is not null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.5)">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Delete Loan</h5>
+                    <button type="button" class="btn-close" @onclick="() => _deleteTarget = null"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Delete loan to <strong>@_deleteTarget.Borrower</strong>?</p>
+                    @if (!string.IsNullOrEmpty(_deleteError))
+                    {
+                        <div class="alert alert-danger">@_deleteError</div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="() => { _deleteTarget = null; _deleteError = null; }">Cancel</button>
+                    <button class="btn btn-danger" @onclick="DeleteConfirmedAsync">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _loading = true;
+    private List<Loan> _active = [];
+    private List<Loan> _settled = [];
+    private bool _showSettled;
+    private string? _errorMessage;
+
+    private bool _showModal;
+    private Loan _editLoan = new();
+    private decimal _interestRatePct;
+    private DateOnly _loanDate;
+    private DateOnly? _repayDate;
+    private string? _modalError;
+
+    private Loan? _deleteTarget;
+    private string? _deleteError;
+
+    private int _userId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = await CurrentUserService.GetCurrentUserAsync();
+        _userId = user!.Id;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        var all = (await LoanRepo.GetAllAsync(_userId)).ToList();
+        _active = all.Where(l => !l.IsSettled).ToList();
+        _settled = all.Where(l => l.IsSettled).ToList();
+        _loading = false;
+    }
+
+    private void OpenAdd()
+    {
+        _editLoan = new Loan { LoanDate = DateOnly.FromDateTime(DateTime.Today) };
+        _interestRatePct = 0;
+        _loanDate = DateOnly.FromDateTime(DateTime.Today);
+        _repayDate = null;
+        _modalError = null;
+        _showModal = true;
+    }
+
+    private void OpenEdit(Loan loan)
+    {
+        _editLoan = new Loan
+        {
+            Id = loan.Id,
+            UserId = loan.UserId,
+            Borrower = loan.Borrower,
+            Email = loan.Email,
+            Phone = loan.Phone,
+            Description = loan.Description,
+            Principal = loan.Principal,
+            InterestRate = loan.InterestRate,
+            AmountRepaid = loan.AmountRepaid,
+            LoanDate = loan.LoanDate,
+            ExpectedRepaymentDate = loan.ExpectedRepaymentDate,
+            IsSettled = loan.IsSettled,
+            CreatedAt = loan.CreatedAt,
+            UpdatedAt = loan.UpdatedAt
+        };
+        _interestRatePct = loan.InterestRate * 100m;
+        _loanDate = loan.LoanDate;
+        _repayDate = loan.ExpectedRepaymentDate;
+        _modalError = null;
+        _showModal = true;
+    }
+
+    private void CloseModal()
+    {
+        _showModal = false;
+        _modalError = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_editLoan.Borrower))
+        {
+            _modalError = "Borrower name is required.";
+            return;
+        }
+
+        _editLoan.LoanDate = _loanDate;
+        _editLoan.ExpectedRepaymentDate = _repayDate;
+        _editLoan.InterestRate = _interestRatePct / 100m;
+        _editLoan.UserId = _userId;
+
+        if (_editLoan.Id == 0)
+            await LoanRepo.CreateAsync(_editLoan);
+        else
+            await LoanRepo.UpdateAsync(_editLoan);
+
+        _showModal = false;
+        await LoadAsync();
+    }
+
+    private void ConfirmDelete(Loan loan)
+    {
+        _deleteTarget = loan;
+        _deleteError = null;
+    }
+
+    private async Task DeleteConfirmedAsync()
+    {
+        if (_deleteTarget is null) return;
+
+        var txs = await LoanRepo.GetTransactionsAsync(_deleteTarget.Id, _userId);
+        if (txs.Any())
+        {
+            _deleteError = "Loan has transactions — delete them first.";
+            return;
+        }
+
+        await LoanRepo.DeleteAsync(_deleteTarget.Id, _userId);
+        _deleteTarget = null;
+        await LoadAsync();
+    }
+}

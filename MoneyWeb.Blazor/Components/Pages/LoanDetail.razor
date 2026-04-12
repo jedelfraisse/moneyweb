@@ -1,0 +1,388 @@
+@page "/loans/{LoanId:int}"
+@rendermode InteractiveServer
+@using MoneyWeb.Blazor.Services
+@using MoneyWeb.Data.Models
+@using MoneyWeb.Data.Repositories.Interfaces
+@attribute [Authorize]
+@inject CurrentUserService CurrentUserService
+@inject ILoanRepository LoanRepo
+@inject NavigationManager Nav
+
+<PageTitle>Loan Detail – MoneyWeb</PageTitle>
+
+@if (_loading)
+{
+    <p>Loading&hellip;</p>
+}
+else if (_loan is null)
+{
+    <div class="alert alert-warning">Loan not found.</div>
+    <a href="/loans" class="btn btn-secondary">← Back to Loans</a>
+}
+else
+{
+    <nav aria-label="breadcrumb" class="mb-3">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/loans">Loans</a></li>
+            <li class="breadcrumb-item active">@_loan.Borrower</li>
+        </ol>
+    </nav>
+
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <h3 class="mb-1">@_loan.Borrower</h3>
+                    @if (!string.IsNullOrEmpty(_loan.Email))
+                    {
+                        <div class="text-muted small"><a href="mailto:@_loan.Email">@_loan.Email</a></div>
+                    }
+                    @if (!string.IsNullOrEmpty(_loan.Phone))
+                    {
+                        <div class="text-muted small">@_loan.Phone</div>
+                    }
+                    @if (!string.IsNullOrEmpty(_loan.Description))
+                    {
+                        <p class="mt-2 mb-0">@_loan.Description</p>
+                    }
+                </div>
+                <span class="badge @(_loan.IsSettled ? "bg-success" : "bg-warning text-dark") fs-6">
+                    @(_loan.IsSettled ? "Settled" : "Active")
+                </span>
+            </div>
+
+            <hr />
+
+            <div class="row g-3 text-center">
+                <div class="col-6 col-sm-3">
+                    <div class="text-muted small">Principal</div>
+                    <div class="fw-bold">@_loan.Principal.ToString("C")</div>
+                </div>
+                <div class="col-6 col-sm-3">
+                    <div class="text-muted small">Balance</div>
+                    <div class="fw-bold @(_loan.Balance > 0 ? "text-danger" : "text-success")">@_loan.Balance.ToString("C")</div>
+                </div>
+                <div class="col-6 col-sm-3">
+                    <div class="text-muted small">Interest Rate</div>
+                    <div class="fw-bold">@((_loan.InterestRate * 100m).ToString("0.##"))%</div>
+                </div>
+                <div class="col-6 col-sm-3">
+                    <div class="text-muted small">Loan Date</div>
+                    <div class="fw-bold">@_loan.LoanDate.ToString("MMM d, yyyy")</div>
+                </div>
+                @if (_loan.ExpectedRepaymentDate.HasValue)
+                {
+                    <div class="col-6 col-sm-3">
+                        <div class="text-muted small">Expected Repayment</div>
+                        <div class="fw-bold">@_loan.ExpectedRepaymentDate.Value.ToString("MMM d, yyyy")</div>
+                    </div>
+                }
+            </div>
+
+            <div class="mt-3 d-flex gap-2 flex-wrap">
+                <button class="btn btn-success" @onclick="OpenAddTransaction">+ Add Transaction</button>
+                <button class="btn @(_loan.IsSettled ? "btn-outline-warning" : "btn-outline-success")" @onclick="ToggleSettledAsync">
+                    @(_loan.IsSettled ? "Reopen Loan" : "Mark Settled")
+                </button>
+                <button class="btn btn-outline-secondary" @onclick="OpenEditLoan">Edit Loan</button>
+            </div>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(_pageError))
+    {
+        <div class="alert alert-danger alert-dismissible">
+            @_pageError
+            <button type="button" class="btn-close" @onclick="() => _pageError = null"></button>
+        </div>
+    }
+
+    <h5 class="mb-2">Transactions</h5>
+    @if (!_transactions.Any())
+    {
+        <p class="text-muted">No transactions recorded yet.</p>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Date</th><th>Type</th><th class="text-end">Amount</th><th>Notes</th><th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var tx in _transactions)
+                    {
+                        <tr>
+                            <td>@tx.TransactionDate.ToString("MMM d, yyyy")</td>
+                            <td>@TxBadge(tx.Type)</td>
+                            <td class="text-end fw-semibold">@tx.Amount.ToString("C")</td>
+                            <td class="text-muted small">@(tx.Notes ?? "—")</td>
+                            <td class="text-end">
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteTransactionAsync(tx)">Delete</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+
+@if (_showTxModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.5)">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Add Transaction</h5>
+                    <button type="button" class="btn-close" @onclick="() => _showTxModal = false"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Date <span class="text-danger">*</span></label>
+                        <input class="form-control" type="date" @bind="_txDate" @bind:format="yyyy-MM-dd" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Type <span class="text-danger">*</span></label>
+                        <select class="form-select" @bind="_txType">
+                            <option value="@LoanTransactionType.Payment">Payment (money received)</option>
+                            <option value="@LoanTransactionType.Additional">Additional (extra amount lent)</option>
+                            <option value="@LoanTransactionType.Interest">Interest (added to owed)</option>
+                            <option value="@LoanTransactionType.Fee">Fee (added to owed)</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Amount <span class="text-danger">*</span></label>
+                        <input class="form-control" type="number" step="0.01" min="0.01" @bind="_txAmount" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Notes</label>
+                        <input class="form-control" @bind="_txNotes" />
+                    </div>
+                    @if (!string.IsNullOrEmpty(_txError))
+                    {
+                        <div class="alert alert-danger">@_txError</div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="() => _showTxModal = false">Cancel</button>
+                    <button class="btn btn-success" @onclick="SaveTransactionAsync">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_showEditModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.5)">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Loan</h5>
+                    <button type="button" class="btn-close" @onclick="() => _showEditModal = false"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Borrower Name <span class="text-danger">*</span></label>
+                        <input class="form-control" @bind="_editLoan!.Borrower" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Email</label>
+                        <input class="form-control" type="email" @bind="_editLoan!.Email" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Phone</label>
+                        <input class="form-control" type="tel" @bind="_editLoan!.Phone" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Description</label>
+                        <textarea class="form-control" rows="2" @bind="_editLoan!.Description"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Principal <span class="text-danger">*</span></label>
+                        <input class="form-control" type="number" step="0.01" min="0" @bind="_editLoan!.Principal" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Interest Rate %</label>
+                        <input class="form-control" type="number" step="0.01" min="0" @bind="_editInterestRatePct" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Loan Date <span class="text-danger">*</span></label>
+                        <input class="form-control" type="date" @bind="_editLoanDate" @bind:format="yyyy-MM-dd" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Expected Repayment Date</label>
+                        <input class="form-control" type="date" @bind="_editRepayDate" @bind:format="yyyy-MM-dd" />
+                    </div>
+                    @if (!string.IsNullOrEmpty(_editError))
+                    {
+                        <div class="alert alert-danger">@_editError</div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="() => _showEditModal = false">Cancel</button>
+                    <button class="btn btn-primary" @onclick="SaveEditAsync">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public int LoanId { get; set; }
+
+    private bool _loading = true;
+    private Loan? _loan;
+    private List<LoanTransaction> _transactions = [];
+    private string? _pageError;
+    private int _userId;
+
+    private bool _showTxModal;
+    private DateOnly _txDate;
+    private LoanTransactionType _txType = LoanTransactionType.Payment;
+    private decimal _txAmount;
+    private string? _txNotes;
+    private string? _txError;
+
+    private bool _showEditModal;
+    private Loan? _editLoan;
+    private decimal _editInterestRatePct;
+    private DateOnly _editLoanDate;
+    private DateOnly? _editRepayDate;
+    private string? _editError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = await CurrentUserService.GetCurrentUserAsync();
+        _userId = user!.Id;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _loan = await LoanRepo.GetByIdAsync(LoanId, _userId);
+        if (_loan is not null)
+            _transactions = (await LoanRepo.GetTransactionsAsync(LoanId, _userId)).ToList();
+        _loading = false;
+    }
+
+    private void OpenAddTransaction()
+    {
+        _txDate = DateOnly.FromDateTime(DateTime.Today);
+        _txType = LoanTransactionType.Payment;
+        _txAmount = 0;
+        _txNotes = null;
+        _txError = null;
+        _showTxModal = true;
+    }
+
+    private async Task SaveTransactionAsync()
+    {
+        if (_loan is null) return;
+        if (_txAmount <= 0)
+        {
+            _txError = "Amount must be greater than zero.";
+            return;
+        }
+
+        var tx = new LoanTransaction
+        {
+            LoanId = _loan.Id,
+            UserId = _userId,
+            TransactionDate = _txDate,
+            Type = _txType,
+            Amount = _txAmount,
+            Notes = string.IsNullOrWhiteSpace(_txNotes) ? null : _txNotes
+        };
+        await LoanRepo.AddTransactionAsync(tx);
+
+        if (_txType == LoanTransactionType.Payment)
+            _loan.AmountRepaid += _txAmount;
+        else
+            _loan.Principal += _txAmount;
+
+        await LoanRepo.UpdateAsync(_loan);
+        _showTxModal = false;
+        await LoadAsync();
+    }
+
+    private async Task DeleteTransactionAsync(LoanTransaction tx)
+    {
+        if (_loan is null) return;
+
+        // Reverse the effect on the loan totals
+        if (tx.Type == LoanTransactionType.Payment)
+            _loan.AmountRepaid -= tx.Amount;
+        else
+            _loan.Principal -= tx.Amount;
+
+        await LoanRepo.DeleteTransactionAsync(tx.Id, _userId);
+        await LoanRepo.UpdateAsync(_loan);
+        await LoadAsync();
+    }
+
+    private async Task ToggleSettledAsync()
+    {
+        if (_loan is null) return;
+        _loan.IsSettled = !_loan.IsSettled;
+        await LoanRepo.UpdateAsync(_loan);
+        await LoadAsync();
+    }
+
+    private void OpenEditLoan()
+    {
+        if (_loan is null) return;
+        _editLoan = new Loan
+        {
+            Id = _loan.Id,
+            UserId = _loan.UserId,
+            Borrower = _loan.Borrower,
+            Email = _loan.Email,
+            Phone = _loan.Phone,
+            Description = _loan.Description,
+            Principal = _loan.Principal,
+            InterestRate = _loan.InterestRate,
+            AmountRepaid = _loan.AmountRepaid,
+            LoanDate = _loan.LoanDate,
+            ExpectedRepaymentDate = _loan.ExpectedRepaymentDate,
+            IsSettled = _loan.IsSettled,
+            CreatedAt = _loan.CreatedAt,
+            UpdatedAt = _loan.UpdatedAt
+        };
+        _editInterestRatePct = _loan.InterestRate * 100m;
+        _editLoanDate = _loan.LoanDate;
+        _editRepayDate = _loan.ExpectedRepaymentDate;
+        _editError = null;
+        _showEditModal = true;
+    }
+
+    private async Task SaveEditAsync()
+    {
+        if (_editLoan is null) return;
+        if (string.IsNullOrWhiteSpace(_editLoan.Borrower))
+        {
+            _editError = "Borrower name is required.";
+            return;
+        }
+        _editLoan.LoanDate = _editLoanDate;
+        _editLoan.ExpectedRepaymentDate = _editRepayDate;
+        _editLoan.InterestRate = _editInterestRatePct / 100m;
+
+        await LoanRepo.UpdateAsync(_editLoan);
+        _showEditModal = false;
+        await LoadAsync();
+    }
+
+    private MarkupString TxBadge(LoanTransactionType type) => type switch
+    {
+        LoanTransactionType.Payment    => new MarkupString("<span class=\"badge bg-success\">💰 Payment</span>"),
+        LoanTransactionType.Additional => new MarkupString("<span class=\"badge bg-primary\">➕ Additional</span>"),
+        LoanTransactionType.Interest   => new MarkupString("<span class=\"badge bg-warning text-dark\">📈 Interest</span>"),
+        LoanTransactionType.Fee        => new MarkupString("<span class=\"badge bg-danger\">⚠️ Fee</span>"),
+        _                              => new MarkupString("<span class=\"badge bg-secondary\">Unknown</span>")
+    };
+}

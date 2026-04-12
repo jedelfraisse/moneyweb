@@ -29,9 +29,9 @@ public class LoanRepository(string connectionString) : ILoanRepository
     {
         using var conn = Connect();
         var sql = """
-            INSERT INTO Loans (Borrower, Description, Principal, InterestRate, AmountRepaid, LoanDate, ExpectedRepaymentDate, IsSettled, CreatedAt, UpdatedAt)
+            INSERT INTO Loans (UserId, Borrower, Email, Phone, Description, Principal, InterestRate, AmountRepaid, LoanDate, ExpectedRepaymentDate, IsSettled, CreatedAt, UpdatedAt)
             OUTPUT INSERTED.Id
-            VALUES (@Borrower, @Description, @Principal, @InterestRate, @AmountRepaid, @LoanDate, @ExpectedRepaymentDate, @IsSettled, GETUTCDATE(), GETUTCDATE())
+            VALUES (@UserId, @Borrower, @Email, @Phone, @Description, @Principal, @InterestRate, @AmountRepaid, @LoanDate, @ExpectedRepaymentDate, @IsSettled, GETUTCDATE(), GETUTCDATE())
             """;
         return await conn.ExecuteScalarAsync<int>(sql, loan);
     }
@@ -41,11 +41,11 @@ public class LoanRepository(string connectionString) : ILoanRepository
         using var conn = Connect();
         var sql = """
             UPDATE Loans SET
-                Borrower = @Borrower, Description = @Description, Principal = @Principal,
-                InterestRate = @InterestRate, AmountRepaid = @AmountRepaid,
+                Borrower = @Borrower, Email = @Email, Phone = @Phone, Description = @Description,
+                Principal = @Principal, InterestRate = @InterestRate, AmountRepaid = @AmountRepaid,
                 LoanDate = @LoanDate, ExpectedRepaymentDate = @ExpectedRepaymentDate,
                 IsSettled = @IsSettled, UpdatedAt = GETUTCDATE()
-            WHERE Id = @Id
+            WHERE Id = @Id AND UserId = @UserId
             """;
         await conn.ExecuteAsync(sql, loan);
     }
@@ -55,4 +55,30 @@ public class LoanRepository(string connectionString) : ILoanRepository
         using var conn = Connect();
         await conn.ExecuteAsync("DELETE FROM Loans WHERE Id = @Id AND UserId = @UserId", new { Id = id, UserId = userId });
     }
+
+    public async Task<IEnumerable<LoanTransaction>> GetTransactionsAsync(int loanId, int userId)
+    {
+        using var conn = Connect();
+        return await conn.QueryAsync<LoanTransaction>(
+            "SELECT * FROM LoanTransactions WHERE LoanId = @LoanId AND UserId = @UserId ORDER BY TransactionDate DESC, Id DESC",
+            new { LoanId = loanId, UserId = userId });
+    }
+
+    public async Task<int> AddTransactionAsync(LoanTransaction tx)
+    {
+        using var conn = Connect();
+        var sql = """
+            INSERT INTO LoanTransactions (LoanId, UserId, TransactionDate, Type, Amount, Notes, CreatedAt)
+            OUTPUT INSERTED.Id
+            VALUES (@LoanId, @UserId, @TransactionDate, @Type, @Amount, @Notes, GETUTCDATE())
+            """;
+        return await conn.ExecuteScalarAsync<int>(sql, tx);
+    }
+
+    public async Task DeleteTransactionAsync(int id, int userId)
+    {
+        using var conn = Connect();
+        await conn.ExecuteAsync("DELETE FROM LoanTransactions WHERE Id = @Id AND UserId = @UserId", new { Id = id, UserId = userId });
+    }
 }
+
