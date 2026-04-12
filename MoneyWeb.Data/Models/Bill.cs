@@ -71,6 +71,7 @@ public class BillOccurrence
     public decimal EstimatedAmount { get; set; }
     public decimal? ActualAmount { get; set; }
     public BillOccurrenceStatus Status { get; set; }
+    public DateOnly? PlannedPayDate { get; set; }
     public DateOnly? SubmittedDate { get; set; }
     public string? Notes { get; set; }
     public DateTime CreatedAt { get; set; }

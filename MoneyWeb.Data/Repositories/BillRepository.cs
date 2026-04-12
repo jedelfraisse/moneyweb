@@ -103,9 +103,9 @@ public class BillRepository(string connectionString) : IBillRepository
         return await conn.ExecuteScalarAsync<int>(
             """
             INSERT INTO BillOccurrences
-                (BillId, UserId, DueDate, EstimatedAmount, ActualAmount, Status, SubmittedDate, Notes, CreatedAt, UpdatedAt)
+                (BillId, UserId, DueDate, EstimatedAmount, ActualAmount, Status, PlannedPayDate, SubmittedDate, Notes, CreatedAt, UpdatedAt)
             OUTPUT INSERTED.Id
-            VALUES (@BillId, @UserId, @DueDate, @EstimatedAmount, @ActualAmount, @Status, @SubmittedDate, @Notes, GETUTCDATE(), GETUTCDATE())
+            VALUES (@BillId, @UserId, @DueDate, @EstimatedAmount, @ActualAmount, @Status, @PlannedPayDate, @SubmittedDate, @Notes, GETUTCDATE(), GETUTCDATE())
             """, occ);
     }
 
@@ -116,7 +116,7 @@ public class BillRepository(string connectionString) : IBillRepository
             """
             UPDATE BillOccurrences SET
                 DueDate = @DueDate, EstimatedAmount = @EstimatedAmount, ActualAmount = @ActualAmount,
-                Status = @Status, SubmittedDate = @SubmittedDate, Notes = @Notes, UpdatedAt = GETUTCDATE()
+                Status = @Status, PlannedPayDate = @PlannedPayDate, SubmittedDate = @SubmittedDate, Notes = @Notes, UpdatedAt = GETUTCDATE()
             WHERE Id = @Id AND UserId = @UserId
             """, occ);
     }

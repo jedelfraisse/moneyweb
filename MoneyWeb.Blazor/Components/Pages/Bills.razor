@@ -24,129 +24,227 @@
 }
 else
 {
-    <div class="table-responsive">
-        <table class="table table-hover align-middle">
-            <thead class="table-light">
-                <tr>
-                    <th></th>
-                    <th>Name</th>
-                    <th>Category</th>
-                    <th>Frequency</th>
-                    <th class="text-end">Est. Amount</th>
-                    <th class="text-center">Next Due</th>
-                    <th class="text-center">Payment</th>
-                    <th>Bank Account</th>
-                    <th></th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var bill in _bills)
-                {
-                    var today = DateOnly.FromDateTime(DateTime.Today);
-                    var nextDue = bill.NextDueDate(today);
-                    var dueSoon = nextDue <= today.AddDays(14);
-                    <tr class="@(!bill.IsActive ? "text-muted" : "")">
-                        <td class="text-center" style="width:28px">
-                            <button class="btn btn-sm btn-link p-0" title="@(_expanded.Contains(bill.Id) ? "Collapse" : "Show occurrences")"
-                                    @onclick="() => ToggleExpand(bill.Id)">
-                                @(_expanded.Contains(bill.Id) ? "▲" : "▼")
-                            </button>
-                        </td>
-                        <td class="fw-semibold">
-                            @bill.Name
-                            @if (!bill.IsActive) { <span class="badge bg-secondary ms-1">Inactive</span> }
-                            @if (_pushedBillIds.Contains(bill.Id))
-                            {
-                                <span class="badge bg-success ms-1" title="Projected payments are in Cash Flow">✓ Pushed</span>
-                            }
-                            else if (bill.BankAccountId.HasValue)
-                            {
-                                <span class="badge bg-light text-muted border ms-1" title="No projections in Cash Flow yet">Not pushed</span>
-                            }
-                        </td>
-                        <td><span class="badge bg-light text-dark border">@bill.Category</span></td>
-                        <td>@FrequencyLabel(bill.Frequency)</td>
-                        <td class="text-end">@bill.Amount.ToString("C")</td>
-                        <td class="text-center @(dueSoon ? "fw-semibold text-danger" : "")">@nextDue.ToString("MMM d, yyyy")</td>
-                        <td class="text-center">
-                            @if (bill.PaymentMethod == DebtPaymentMethod.AutoDraft)
-                            {
-                                <span class="badge bg-info text-dark">Auto-Draft</span>
-                            }
-                            else
-                            {
-                                <span class="badge bg-secondary">Manual</span>
-                            }
-                        </td>
-                        <td class="text-muted small">@(bill.BankAccountName ?? "—")</td>
-                        <td class="text-end text-nowrap">
-                            <button class="btn btn-sm btn-outline-success me-1" @onclick="() => OpenEnterActual(bill)" title="Enter actual bill amount / due date">Enter Actual</button>
-                            @if (bill.BankAccountId.HasValue)
-                            {
-                                <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => PushToCalendarAsync(bill)" title="Push projected payments to Cash Flow">Push ↗</button>
-                                <a class="btn btn-sm btn-link p-0 me-1 text-muted" href="/transactions/@bill.BankAccountId">View →</a>
-                            }
-                            <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => OpenEditBill(bill)">Edit</button>
-                            <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(bill)">Delete</button>
-                        </td>
+    var manualBills    = _bills.Where(b => b.PaymentMethod != DebtPaymentMethod.AutoDraft).ToList();
+    var autoDraftBills = _bills.Where(b => b.PaymentMethod == DebtPaymentMethod.AutoDraft).ToList();
+
+    @if (manualBills.Count > 0)
+    {
+        <h5 class="mt-2 mb-2">
+            <span class="badge bg-secondary me-1">Manual</span>
+            Bills I pay myself
+        </h5>
+        <div class="table-responsive mb-4">
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th></th><th>Name</th><th>Category</th><th>Frequency</th>
+                        <th class="text-end">Est. Amount</th><th class="text-center">Next Due</th>
+                        <th>Bank Account</th><th></th>
                     </tr>
-                    @if (_expanded.Contains(bill.Id))
+                </thead>
+                <tbody>
+                    @foreach (var bill in manualBills)
                     {
-                        <tr>
-                            <td colspan="9" class="p-0 border-top-0">
-                                <div class="bg-light px-4 py-2">
-                                    @if (!_occurrences.TryGetValue(bill.Id, out var occs) || occs.Count == 0)
-                                    {
-                                        <span class="text-muted small fst-italic">No recorded occurrences.</span>
-                                    }
-                                    else
-                                    {
-                                        <table class="table table-sm mb-0">
-                                            <thead>
-                                                <tr>
-                                                    <th>Due Date</th>
-                                                    <th class="text-end">Estimated</th>
-                                                    <th class="text-end">Actual</th>
-                                                    <th class="text-center">Status</th>
-                                                    <th></th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                @foreach (var occ in occs)
-                                                {
-                                                    <tr>
-                                                        <td>@occ.DueDate.ToString("MMM d, yyyy")</td>
-                                                        <td class="text-end">@occ.EstimatedAmount.ToString("C")</td>
-                                                        <td class="text-end">@(occ.ActualAmount?.ToString("C") ?? "—")</td>
-                                                        <td class="text-center">@OccurrenceStatusBadge(occ.Status)</td>
-                                                        <td class="text-end text-nowrap">
-                                                            @if (occ.Status == BillOccurrenceStatus.Estimated || occ.Status == BillOccurrenceStatus.Received)
-                                                            {
-                                                                <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => OpenEditOccurrence(occ)">Edit</button>
-                                                            }
-                                                            @if (occ.Status == BillOccurrenceStatus.Received)
-                                                            {
-                                                                <button class="btn btn-sm btn-outline-warning me-1" @onclick="() => AdvanceOccurrenceStatus(occ, BillOccurrenceStatus.Submitted)">📤 Submit</button>
-                                                            }
-                                                            @if (occ.Status == BillOccurrenceStatus.Submitted)
-                                                            {
-                                                                <button class="btn btn-sm btn-outline-success me-1" @onclick="() => AdvanceOccurrenceStatus(occ, BillOccurrenceStatus.Confirmed)">✓ Confirm</button>
-                                                            }
-                                                            <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteOccurrence(occ)">✕</button>
-                                                        </td>
-                                                    </tr>
-                                                }
-                                            </tbody>
-                                        </table>
-                                    }
-                                </div>
+                        var today   = DateOnly.FromDateTime(DateTime.Today);
+                        var nextDue = bill.NextDueDate(today);
+                        var dueSoon = nextDue <= today.AddDays(14);
+                        <tr class="@(!bill.IsActive ? "text-muted" : "")">
+                            <td class="text-center" style="width:28px">
+                                <button class="btn btn-sm btn-link p-0" @onclick="() => ToggleExpand(bill.Id)">
+                                    @(_expanded.Contains(bill.Id) ? "▲" : "▼")
+                                </button>
+                            </td>
+                            <td class="fw-semibold">
+                                @bill.Name
+                                @if (!bill.IsActive) { <span class="badge bg-secondary ms-1">Inactive</span> }
+                                @if (_pushedBillIds.Contains(bill.Id)) { <span class="badge bg-success ms-1">✓ Pushed</span> }
+                                else if (bill.BankAccountId.HasValue) { <span class="badge bg-light text-muted border ms-1">Not pushed</span> }
+                            </td>
+                            <td><span class="badge bg-light text-dark border">@bill.Category</span></td>
+                            <td>@FrequencyLabel(bill.Frequency)</td>
+                            <td class="text-end">@bill.Amount.ToString("C")</td>
+                            <td class="text-center @(dueSoon ? "fw-semibold text-danger" : "")">@nextDue.ToString("MMM d, yyyy")</td>
+                            <td class="text-muted small">@(bill.BankAccountName ?? "—")</td>
+                            <td class="text-end text-nowrap">
+                                <button class="btn btn-sm btn-outline-success me-1" @onclick="() => OpenEnterActual(bill)"
+                                        title="Log this bill — enter the amount received and when you plan to pay">
+                                    📋 Log Bill
+                                </button>
+                                @if (bill.BankAccountId.HasValue)
+                                {
+                                    <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => PushToCalendarAsync(bill)">Push ↗</button>
+                                    <a class="btn btn-sm btn-link p-0 me-1 text-muted" href="/transactions/@bill.BankAccountId">View →</a>
+                                }
+                                <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => OpenEditBill(bill)">Edit</button>
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(bill)">Delete</button>
                             </td>
                         </tr>
+                        @if (_expanded.Contains(bill.Id))
+                        {
+                            <tr>
+                                <td colspan="8" class="p-0 border-top-0">
+                                    <div class="bg-light px-4 py-2">
+                                        @if (!_occurrences.TryGetValue(bill.Id, out var occs) || occs.Count == 0)
+                                        {
+                                            <span class="text-muted small fst-italic">No recorded history yet.</span>
+                                        }
+                                        else
+                                        {
+                                            <table class="table table-sm mb-0">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Due Date</th><th>Plan to Pay</th>
+                                                        <th class="text-end">Estimated</th><th class="text-end">Actual</th>
+                                                        <th class="text-center">Status</th><th></th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @foreach (var occ in occs)
+                                                    {
+                                                        <tr>
+                                                            <td>@occ.DueDate.ToString("MMM d, yyyy")</td>
+                                                            <td class="text-muted small">@(occ.PlannedPayDate.HasValue ? occ.PlannedPayDate.Value.ToString("MMM d, yyyy") : "—")</td>
+                                                            <td class="text-end">@occ.EstimatedAmount.ToString("C")</td>
+                                                            <td class="text-end">@(occ.ActualAmount?.ToString("C") ?? "—")</td>
+                                                            <td class="text-center">@OccurrenceStatusBadge(occ.Status)</td>
+                                                            <td class="text-end text-nowrap">
+                                                                @if (occ.Status is BillOccurrenceStatus.Estimated or BillOccurrenceStatus.Received)
+                                                                {
+                                                                    <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => OpenEditOccurrence(occ)">Edit</button>
+                                                                }
+                                                                @if (occ.Status == BillOccurrenceStatus.Received)
+                                                                {
+                                                                    <button class="btn btn-sm btn-outline-warning me-1" @onclick="() => AdvanceOccurrenceStatus(occ, BillOccurrenceStatus.Submitted)">📤 Submit</button>
+                                                                }
+                                                                @if (occ.Status == BillOccurrenceStatus.Submitted)
+                                                                {
+                                                                    <button class="btn btn-sm btn-outline-success me-1" @onclick="() => AdvanceOccurrenceStatus(occ, BillOccurrenceStatus.Confirmed)">✓ Confirm</button>
+                                                                }
+                                                                <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteOccurrence(occ)">✕</button>
+                                                            </td>
+                                                        </tr>
+                                                    }
+                                                </tbody>
+                                            </table>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
                     }
-                }
-            </tbody>
-        </table>
-    </div>
+                </tbody>
+            </table>
+        </div>
+    }
+
+    @if (autoDraftBills.Count > 0)
+    {
+        <h5 class="mt-2 mb-2">
+            <span class="badge bg-info text-dark me-1">Auto-Draft</span>
+            Bills pulled automatically
+        </h5>
+        <div class="table-responsive mb-4">
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th></th><th>Name</th><th>Category</th><th>Frequency</th>
+                        <th class="text-end">Est. Amount</th><th class="text-center">Next Due</th>
+                        <th>Bank Account</th><th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var bill in autoDraftBills)
+                    {
+                        var today   = DateOnly.FromDateTime(DateTime.Today);
+                        var nextDue = bill.NextDueDate(today);
+                        var dueSoon = nextDue <= today.AddDays(14);
+                        <tr class="@(!bill.IsActive ? "text-muted" : "")">
+                            <td class="text-center" style="width:28px">
+                                <button class="btn btn-sm btn-link p-0" @onclick="() => ToggleExpand(bill.Id)">
+                                    @(_expanded.Contains(bill.Id) ? "▲" : "▼")
+                                </button>
+                            </td>
+                            <td class="fw-semibold">
+                                @bill.Name
+                                @if (!bill.IsActive) { <span class="badge bg-secondary ms-1">Inactive</span> }
+                                @if (_pushedBillIds.Contains(bill.Id)) { <span class="badge bg-success ms-1">✓ Pushed</span> }
+                                else if (bill.BankAccountId.HasValue) { <span class="badge bg-light text-muted border ms-1">Not pushed</span> }
+                            </td>
+                            <td><span class="badge bg-light text-dark border">@bill.Category</span></td>
+                            <td>@FrequencyLabel(bill.Frequency)</td>
+                            <td class="text-end">@bill.Amount.ToString("C")</td>
+                            <td class="text-center @(dueSoon ? "fw-semibold text-danger" : "")">@nextDue.ToString("MMM d, yyyy")</td>
+                            <td class="text-muted small">@(bill.BankAccountName ?? "—")</td>
+                            <td class="text-end text-nowrap">
+                                <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => OpenEnterActual(bill)"
+                                        title="Record the amount actually drafted">
+                                    Record Amount
+                                </button>
+                                @if (bill.BankAccountId.HasValue)
+                                {
+                                    <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => PushToCalendarAsync(bill)">Push ↗</button>
+                                    <a class="btn btn-sm btn-link p-0 me-1 text-muted" href="/transactions/@bill.BankAccountId">View →</a>
+                                }
+                                <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => OpenEditBill(bill)">Edit</button>
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(bill)">Delete</button>
+                            </td>
+                        </tr>
+                        @if (_expanded.Contains(bill.Id))
+                        {
+                            <tr>
+                                <td colspan="8" class="p-0 border-top-0">
+                                    <div class="bg-light px-4 py-2">
+                                        @if (!_occurrences.TryGetValue(bill.Id, out var occs) || occs.Count == 0)
+                                        {
+                                            <span class="text-muted small fst-italic">No recorded history yet.</span>
+                                        }
+                                        else
+                                        {
+                                            <table class="table table-sm mb-0">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Due Date</th>
+                                                        <th class="text-end">Estimated</th><th class="text-end">Actual</th>
+                                                        <th class="text-center">Status</th><th></th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @foreach (var occ in occs)
+                                                    {
+                                                        <tr>
+                                                            <td>@occ.DueDate.ToString("MMM d, yyyy")</td>
+                                                            <td class="text-end">@occ.EstimatedAmount.ToString("C")</td>
+                                                            <td class="text-end">@(occ.ActualAmount?.ToString("C") ?? "—")</td>
+                                                            <td class="text-center">@OccurrenceStatusBadge(occ.Status)</td>
+                                                            <td class="text-end text-nowrap">
+                                                                @if (occ.Status is BillOccurrenceStatus.Estimated or BillOccurrenceStatus.Received)
+                                                                {
+                                                                    <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => OpenEditOccurrence(occ)">Edit</button>
+                                                                }
+                                                                @if (occ.Status == BillOccurrenceStatus.Received)
+                                                                {
+                                                                    <button class="btn btn-sm btn-outline-warning me-1" @onclick="() => AdvanceOccurrenceStatus(occ, BillOccurrenceStatus.Submitted)">📤 Submit</button>
+                                                                }
+                                                                @if (occ.Status == BillOccurrenceStatus.Submitted)
+                                                                {
+                                                                    <button class="btn btn-sm btn-outline-success me-1" @onclick="() => AdvanceOccurrenceStatus(occ, BillOccurrenceStatus.Confirmed)">✓ Confirm</button>
+                                                                }
+                                                                <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteOccurrence(occ)">✕</button>
+                                                            </td>
+                                                        </tr>
+                                                    }
+                                                </tbody>
+                                            </table>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
 }
 
 @if (_errorMessage is not null)
@@ -254,14 +352,18 @@ else
     </div>
 }
 
-<!-- ── Enter Actual Modal ─────────────────────────────────────────── -->
+<!-- ── Log Bill / Record Amount Modal ──────────────────────────────── -->
 @if (_showActualModal)
 {
+    var isManualModal = _enteringActualBill?.PaymentMethod != DebtPaymentMethod.AutoDraft;
     <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.4)">
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title">Enter Actual — @_editingOcc?.BillName</h5>
+                    <h5 class="modal-title">
+                        @(isManualModal ? "📋 Log Bill" : "Record Amount")
+                        — @_editingOcc?.BillName
+                    </h5>
                     <button type="button" class="btn-close" @onclick="CloseActualModal"></button>
                 </div>
                 <div class="modal-body">
@@ -269,10 +371,10 @@ else
                     {
                         <div class="alert alert-danger">@_occModalError</div>
                     }
-                    @if (_enteringActualBill?.PaymentMethod == DebtPaymentMethod.AutoDraft)
+                    @if (!isManualModal)
                     {
                         <div class="alert alert-info py-2 mb-3 small">
-                            <strong>Auto-Draft bill:</strong> saving the actual amount will update the estimate for future projections.
+                            <strong>Auto-Draft:</strong> saving the actual amount will update the estimate for future projections.
                         </div>
                     }
                     <div class="row g-3">
@@ -280,8 +382,18 @@ else
                             <label class="form-label">Due Date</label>
                             <input class="form-control" type="date" @bind="_occDueDate" @bind:format="yyyy-MM-dd" />
                         </div>
+                        @if (isManualModal)
+                        {
+                            <div class="col-md-6">
+                                <label class="form-label">
+                                    Plan to Pay
+                                    <span class="text-muted small">(optional — if different from due date)</span>
+                                </label>
+                                <input class="form-control" type="date" @bind="_occPlannedPayDate" @bind:format="yyyy-MM-dd" />
+                            </div>
+                        }
                         <div class="col-md-6">
-                            <label class="form-label">Actual Amount</label>
+                            <label class="form-label">@(isManualModal ? "Amount" : "Actual Amount")</label>
                             <div class="input-group">
                                 <span class="input-group-text">$</span>
                                 <input class="form-control" type="number" step="0.01" min="0"
@@ -296,7 +408,9 @@ else
                 </div>
                 <div class="modal-footer">
                     <button class="btn btn-secondary" @onclick="CloseActualModal">Cancel</button>
-                    <button class="btn btn-success" @onclick="SaveOccurrence">Save Actual</button>
+                    <button class="btn btn-success" @onclick="SaveOccurrence">
+                        @(isManualModal ? "Save Bill" : "Save Amount")
+                    </button>
                 </div>
             </div>
         </div>
@@ -345,6 +459,7 @@ else
     private BillOccurrence? _editingOcc;
     private Bill? _enteringActualBill;      // the parent bill, needed to check PaymentMethod
     private DateOnly _occDueDate;
+    private DateOnly? _occPlannedPayDate;
     private decimal _occActualAmount;
     private string? _occModalError;
 
@@ -461,6 +576,7 @@ else
         };
         _enteringActualBill = bill;
         _occDueDate = _editingOcc.DueDate;
+        _occPlannedPayDate = null;
         _occActualAmount = bill.Amount;
         _occModalError = null;
         _showActualModal = true;
@@ -477,12 +593,13 @@ else
         };
         _enteringActualBill = _bills.FirstOrDefault(b => b.Id == occ.BillId);
         _occDueDate = occ.DueDate;
+        _occPlannedPayDate = occ.PlannedPayDate;
         _occActualAmount = occ.ActualAmount ?? occ.EstimatedAmount;
         _occModalError = null;
         _showActualModal = true;
     }
 
-    private void CloseActualModal() { _showActualModal = false; _editingOcc = null; _enteringActualBill = null; _occModalError = null; }
+    private void CloseActualModal() { _showActualModal = false; _editingOcc = null; _enteringActualBill = null; _occPlannedPayDate = null; _occModalError = null; }
 
     private async Task SaveOccurrence()
     {
@@ -493,6 +610,7 @@ else
 
         _editingOcc.UserId = user.Id;
         _editingOcc.DueDate = _occDueDate;
+        _editingOcc.PlannedPayDate = _occPlannedPayDate;
         _editingOcc.ActualAmount = _occActualAmount;
         if (_editingOcc.Status == BillOccurrenceStatus.Estimated)
             _editingOcc.Status = BillOccurrenceStatus.Received;
