@@ -78,10 +78,10 @@ else
             }
         </tbody>
         <tfoot>
-            <tr class="fw-bold">
-                <td colspan="2">Total Estimated</td>
-                <td class="text-end">@_incomes.Where(i => i.IsActive).Sum(i => i.EstimatedAmount).ToString("C")/period</td>
-                <td colspan="4"></td>
+            <tr class="fw-bold table-light">
+                <td colspan="2">Total Est. Monthly</td>
+                <td class="text-end">@_incomes.Where(i => i.IsActive).Sum(i => ToMonthlyEquivalent(i)).ToString("C")</td>
+                <td colspan="4"><span class="fw-normal text-muted small">normalized to monthly</span></td>
             </tr>
         </tfoot>
     </table>
@@ -367,6 +367,15 @@ else
                                         : new DateOnly(date.Year, date.Month, 1).AddMonths(1),
         IncomeFrequency.Monthly     => date.AddMonths(1),
         _                           => date.AddMonths(1)
+    };
+
+    private static decimal ToMonthlyEquivalent(IncomeModel income) => income.Frequency switch
+    {
+        IncomeFrequency.Weekly      => income.EstimatedAmount * (52m / 12m),
+        IncomeFrequency.BiWeekly    => income.EstimatedAmount * (26m / 12m),
+        IncomeFrequency.SemiMonthly => income.EstimatedAmount * 2m,
+        IncomeFrequency.Monthly     => income.EstimatedAmount,
+        _                           => income.EstimatedAmount
     };
 
     private static string FormatFrequency(IncomeFrequency f) => f switch
