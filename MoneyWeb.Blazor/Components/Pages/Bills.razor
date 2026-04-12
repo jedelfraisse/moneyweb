@@ -537,12 +537,20 @@ else
         _editing.UserId = user.Id;
 
         if (_editing.Id == 0)
-            await BillRepo.CreateAsync(_editing);
+            _editing.Id = await BillRepo.CreateAsync(_editing);
         else
             await BillRepo.UpdateAsync(_editing);
 
         CloseModal();
         await LoadAsync();
+
+        // Auto-push cash flow projections when a bank account is linked
+        if (_editing.BankAccountId.HasValue)
+        {
+            var saved = _bills.FirstOrDefault(b => b.Id == _editing.Id);
+            if (saved is not null)
+                await PushToCalendarAsync(saved);
+        }
     }
 
     // ── Delete ──────────────────────────────────────────────────────

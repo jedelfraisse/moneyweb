@@ -299,11 +299,19 @@ else
         _editing.UserId = _userId;
         _editing.BankAccountId = int.TryParse(_bankIdStr, out var bid) ? bid : null;
         if (_editing.Id == 0)
-            await IncomeRepo.CreateAsync(_editing);
+            _editing.Id = await IncomeRepo.CreateAsync(_editing);
         else
             await IncomeRepo.UpdateAsync(_editing);
         _showModal = false;
         await LoadAsync();
+
+        // Auto-push cash flow projections when a bank account is linked
+        if (_editing.BankAccountId.HasValue)
+        {
+            var saved = _incomes.FirstOrDefault(i => i.Id == _editing.Id);
+            if (saved is not null)
+                await PushIncomeProjections(saved);
+        }
     }
 
     private async Task ConfirmReceived(IncomeModel income)
