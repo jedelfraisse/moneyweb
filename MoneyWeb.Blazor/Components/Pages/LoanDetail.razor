@@ -7,6 +7,7 @@
 @inject CurrentUserService CurrentUserService
 @inject ILoanRepository LoanRepo
 @inject NavigationManager Nav
+@inject LoanInterestService InterestService
 
 <PageTitle>Loan Detail – MoneyWeb</PageTitle>
 
@@ -81,11 +82,25 @@ else
 
             <div class="mt-3 d-flex gap-2 flex-wrap">
                 <button class="btn btn-success" @onclick="OpenAddTransaction">+ Add Transaction</button>
+                @if (_loan.InterestRate > 0 && !_loan.IsSettled)
+                {
+                    <button class="btn btn-outline-info" @onclick="GenerateInterestAsync" disabled="@_generatingInterest">
+                        @(_generatingInterest ? "Generating…" : "📈 Generate Past Interest")
+                    </button>
+                }
                 <button class="btn @(_loan.IsSettled ? "btn-outline-warning" : "btn-outline-success")" @onclick="ToggleSettledAsync">
                     @(_loan.IsSettled ? "Reopen Loan" : "Mark Settled")
                 </button>
                 <button class="btn btn-outline-secondary" @onclick="OpenEditLoan">Edit Loan</button>
             </div>
+            @if (_interestGenerated.HasValue)
+            {
+                <div class="alert @(_interestGenerated.Value > 0 ? "alert-success" : "alert-info") mt-3 mb-0 py-2">
+                    @(_interestGenerated.Value > 0
+                        ? $"✅ Generated {_interestGenerated.Value} interest transaction(s)."
+                        : "ℹ️ No missing interest transactions — all months are already covered.")
+                </div>
+            }
         </div>
     </div>
 
@@ -252,6 +267,8 @@ else
 
     private bool _showTxModal;
     private bool _sortDescending = false;
+    private bool _generatingInterest;
+    private int? _interestGenerated;
     private DateOnly _txDate;
     private LoanTransactionType _txType = LoanTransactionType.Payment;
     private decimal _txAmount;
@@ -279,6 +296,22 @@ else
         if (_loan is not null)
             _transactions = (await LoanRepo.GetTransactionsAsync(LoanId, _userId)).ToList();
         _loading = false;
+    }
+
+    private async Task GenerateInterestAsync()
+    {
+        if (_loan is null) return;
+        _generatingInterest = true;
+        _interestGenerated = null;
+        try
+        {
+            _interestGenerated = await InterestService.AccrueInterestAsync(_loan, _userId);
+            await LoadAsync();
+        }
+        finally
+        {
+            _generatingInterest = false;
+        }
     }
 
     private void OpenAddTransaction()

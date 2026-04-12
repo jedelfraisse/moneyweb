@@ -80,5 +80,12 @@ public class LoanRepository(string connectionString) : ILoanRepository
         using var conn = Connect();
         await conn.ExecuteAsync("DELETE FROM LoanTransactions WHERE Id = @Id AND UserId = @UserId", new { Id = id, UserId = userId });
     }
+
+    public async Task<IEnumerable<Loan>> GetAllActiveWithInterestAsync()
+    {
+        using var conn = Connect();
+        return await conn.QueryAsync<Loan>(
+            "SELECT * FROM Loans WHERE IsSettled = 0 AND InterestRate > 0");
+    }
 }
 

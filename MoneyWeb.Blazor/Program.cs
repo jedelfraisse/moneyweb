@@ -29,6 +29,8 @@ builder.Services.AddAuthorization();
 builder.Services.AddRazorPages();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<CurrentUserService>();
+builder.Services.AddScoped<LoanInterestService>();
+builder.Services.AddHostedService<InterestAccrualBackgroundService>();
 
 // Add services to the container.
 builder.Services.AddRazorComponents()
