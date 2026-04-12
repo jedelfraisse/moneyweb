@@ -40,4 +40,5 @@ public record ScheduledPayment(
     DateOnly Date,
     decimal Amount,
     decimal FeesAmount,
-    decimal BalanceAfter);
+    decimal BalanceAfter,
+    decimal InterestAccrued);

@@ -219,6 +219,7 @@ else
                                     </td>
                                     <td class="text-end">@(payoffDate?.ToString("MMM yyyy") ?? "—")</td>
                                     <td class="text-end text-nowrap">
+                                        <button class="btn btn-sm btn-outline-info me-1" @onclick="() => OpenSchedule(debt, activeResult)" title="View payment schedule">Schedule</button>
                                         <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => OpenEditDebt(debt)">Edit</button>
                                         <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDeleteDebt(debt)">Delete</button>
                                     </td>
@@ -622,6 +623,67 @@ else
     </div>
 }
 
+@* ── Payment Schedule Modal ── *@
+@if (_scheduleDebt is not null && _scheduleRows is not null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.4)">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Payment Schedule — @_scheduleDebt.Name</h5>
+                    <button type="button" class="btn-close" @onclick="() => _scheduleDebt = null"></button>
+                </div>
+                <div class="modal-body p-0">
+                    @if (_scheduleRows.Count == 0)
+                    {
+                        <p class="p-3 text-muted">No projected payments found.</p>
+                    }
+                    else
+                    {
+                        <table class="table table-sm table-hover mb-0">
+                            <thead class="table-light sticky-top">
+                                <tr>
+                                    <th>Month</th>
+                                    <th class="text-end">Payment</th>
+                                    <th class="text-end">Interest</th>
+                                    <th class="text-end">Principal</th>
+                                    <th class="text-end">Balance</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var row in _scheduleRows)
+                                {
+                                    var principal = row.Amount - row.InterestAccrued;
+                                    <tr>
+                                        <td>@row.Date.ToString("MMM yyyy")</td>
+                                        <td class="text-end">@row.Amount.ToString("C")</td>
+                                        <td class="text-end text-danger">@row.InterestAccrued.ToString("C")</td>
+                                        <td class="text-end text-success">@principal.ToString("C")</td>
+                                        <td class="text-end fw-semibold">@row.BalanceAfter.ToString("C")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                            <tfoot class="table-light">
+                                <tr class="fw-bold">
+                                    <td>Totals</td>
+                                    <td class="text-end">@_scheduleRows.Sum(r => r.Amount).ToString("C")</td>
+                                    <td class="text-end text-danger">@_scheduleRows.Sum(r => r.InterestAccrued).ToString("C")</td>
+                                    <td class="text-end text-success">@_scheduleRows.Sum(r => r.Amount - r.InterestAccrued).ToString("C")</td>
+                                    <td></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                        <p class="text-muted small p-2 mb-0">Showing up to 60 months under the active strategy. Interest compounds monthly.</p>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="() => _scheduleDebt = null">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 @* ── Delete Confirm Modals ── *@
 @if (_deleteGroupTarget is not null)
 {
@@ -671,6 +733,16 @@ else
     private Dictionary<int, DebtPayoffResult> _payoffResults = [];
     private HashSet<int> _pushedGroupIds = [];
     private HashSet<int> _pushedDebtIds = [];
+
+    // Schedule modal
+    private Debt? _scheduleDebt;
+    private List<ScheduledPayment>? _scheduleRows;
+
+    private void OpenSchedule(Debt debt, StrategyResult result)
+    {
+        _scheduleDebt = debt;
+        _scheduleRows = result.PaymentSchedule.Where(p => p.DebtId == debt.Id).ToList();
+    }
 
     // Group modal
     private bool _showGroupModal;

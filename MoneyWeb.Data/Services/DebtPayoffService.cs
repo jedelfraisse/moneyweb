@@ -66,6 +66,10 @@ public class DebtPayoffService
             month++;
             decimal budgetRemaining = monthlyBudget;
 
+            // Track per-debt interest and payments for this month's schedule entry
+            var interestThisMonth = debts.ToDictionary(d => d.Id, _ => 0m);
+            var paymentsThisMonth = debts.ToDictionary(d => d.Id, _ => 0m);
+
             // Accrue interest on all active balances
             foreach (var debt in debts)
             {
@@ -75,10 +79,11 @@ public class DebtPayoffService
                 balances[debt.Id] += interest;
                 interestByDebt[debt.Id] += interest;
                 totalInterest += interest;
+                if (month <= scheduleMonthCap)
+                    interestThisMonth[debt.Id] = interest;
             }
 
             // Pay minimums first — track payments per debt this month for the schedule
-            var paymentsThisMonth = debts.ToDictionary(d => d.Id, _ => 0m);
             foreach (var debt in debts)
             {
                 if (balances[debt.Id] <= 0) continue;
@@ -125,7 +130,7 @@ public class DebtPayoffService
                         : 1;
                     var dueDate = new DateOnly(dueMonth.Year, dueMonth.Month, day);
                     var fees = debt.Fees.Where(f => f.IsActive).Sum(f => f.Amount);
-                    schedule.Add(new ScheduledPayment(debt.Id, debt.Name, dueDate, paid, fees, balances[debt.Id]));
+                    schedule.Add(new ScheduledPayment(debt.Id, debt.Name, dueDate, paid, fees, balances[debt.Id], interestThisMonth.GetValueOrDefault(debt.Id)));
                 }
             }
 
