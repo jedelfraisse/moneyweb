@@ -87,5 +87,32 @@ public class LoanRepository(string connectionString) : ILoanRepository
         return await conn.QueryAsync<Loan>(
             "SELECT * FROM Loans WHERE IsSettled = 0 AND InterestRate > 0");
     }
+
+    public async Task<IEnumerable<Loan>> GetSharedWithMeAsync(int userId)
+    {
+        using var conn = Connect();
+        var sql = """
+            SELECT DISTINCT l.*, u.DisplayName AS OwnerDisplayName
+            FROM Loans l
+            INNER JOIN Users u ON u.Id = l.UserId
+            WHERE l.UserId != @UserId
+              AND l.IsSettled = 0
+              AND EXISTS (
+                SELECT 1 FROM SharePermissions sp
+                WHERE sp.EntityType = 4
+                  AND sp.EntityId = l.Id
+                  AND (
+                    sp.SharedWithUserId = @UserId
+                    OR (sp.SharedWithGroupId IS NOT NULL AND EXISTS (
+                        SELECT 1 FROM UserGroupMembers m
+                        WHERE m.GroupId = sp.SharedWithGroupId
+                          AND m.UserId = @UserId AND m.Status = 1
+                    ))
+                  )
+              )
+            ORDER BY l.Borrower
+            """;
+        return await conn.QueryAsync<Loan>(sql, new { UserId = userId });
+    }
 }
 

@@ -13,6 +13,7 @@
 @inject NavigationManager Nav
 @inject IUserGroupRepository UserGroupRepo
 @inject ICashFlowRepository CashFlowRepo
+@inject IShareRepository ShareRepo
 
 <PageTitle>Debts – MoneyWeb</PageTitle>
 
@@ -369,6 +370,34 @@ else
     }
 }
 
+@if (_sharedDebts.Any())
+{
+    <h2 class="h5 mt-4">Shared With You</h2>
+    <table class="table table-hover">
+        <thead>
+            <tr>
+                <th>Owner</th>
+                <th>Name</th>
+                <th class="text-end">Balance</th>
+                <th class="text-end">Interest Rate</th>
+                <th class="text-end">Min. Payment</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var debt in _sharedDebts)
+            {
+                <tr>
+                    <td><span class="badge bg-secondary">@debt.OwnerDisplayName</span></td>
+                    <td>@debt.Name</td>
+                    <td class="text-end">@debt.Balance.ToString("C")</td>
+                    <td class="text-end">@((debt.InterestRate * 100).ToString("F2"))%</td>
+                    <td class="text-end">@debt.MinimumPayment.ToString("C")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
 @* ── Group Modal ── *@
 @if (_showGroupModal)
 {
@@ -609,6 +638,38 @@ else
                             </div>
                         </div>
                     </div>
+                    @* ── Sharing section ── *@
+                    @if (_editingDebt.Id > 0)
+                    {
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Who Can See This</label>
+                            @if (!_shareableUsers.Any() && !_shareableGroups.Any())
+                            {
+                                <p class="text-muted small mb-0">No contacts or groups yet. Add contacts on the <a href="/sharing">Sharing</a> page.</p>
+                            }
+                            else
+                            {
+                                @foreach (var u in _shareableUsers)
+                                {
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="share-u-@u.UserId"
+                                               checked="@_debtSharedWithUserIds.Contains(u.UserId)"
+                                               @onchange="e => ToggleDebtShareUser(u.UserId, (bool)(e.Value ?? false))" />
+                                        <label class="form-check-label" for="share-u-@u.UserId">@u.DisplayName</label>
+                                    </div>
+                                }
+                                @foreach (var g in _shareableGroups)
+                                {
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="share-g-@g.Id"
+                                               checked="@_debtSharedWithGroupIds.Contains(g.Id)"
+                                               @onchange="e => ToggleDebtShareGroup(g.Id, (bool)(e.Value ?? false))" />
+                                        <label class="form-check-label" for="share-g-@g.Id"><span class="badge bg-secondary me-1">Group</span>@g.Name</label>
+                                    </div>
+                                }
+                            }
+                        </div>
+                    }
                     @if (_debtError is not null)
                     {
                         <div class="alert alert-danger">@_debtError</div>
@@ -729,6 +790,7 @@ else
 
     private List<DebtGroup> _groups = [];
     private List<Debt> _ungrouped = [];
+    private List<Debt> _sharedDebts = [];
     private List<BankAccount> _bankAccounts = [];
     private Dictionary<int, DebtPayoffResult> _payoffResults = [];
     private HashSet<int> _pushedGroupIds = [];
@@ -767,6 +829,13 @@ else
     private decimal _newFeeAmount;
     private DebtFeeCategory _newFeeCategory = DebtFeeCategory.Other;
 
+    // Sharing state for debt modal
+    private List<(int UserId, string DisplayName)> _shareableUsers = [];
+    private List<UserGroup> _shareableGroups = [];
+    private List<SharePermission> _existingDebtShares = [];
+    private HashSet<int> _debtSharedWithUserIds = [];
+    private HashSet<int> _debtSharedWithGroupIds = [];
+
     protected override async Task OnInitializedAsync()
     {
         var user = await CurrentUserService.GetCurrentUserAsync();
@@ -791,6 +860,11 @@ else
 
         _pushedGroupIds = [.. await CashFlowRepo.GetProjectedGroupIdsAsync(_userId)];
         _pushedDebtIds  = [.. await CashFlowRepo.GetProjectedSourceIdsAsync(_userId, TransactionCategory.DebtPayment)];
+
+        _sharedDebts = (await DebtRepo.GetSharedWithMeAsync(_userId)).ToList();
+
+        _shareableUsers = (await ShareRepo.GetShareableUsersAsync(_userId)).ToList();
+        _shareableGroups = (await UserGroupRepo.GetAllForUserAsync(_userId)).ToList();
 
         _loading = false;
     }
@@ -1015,9 +1089,12 @@ else
         _newFeeName = string.Empty;
         _newFeeAmount = 0;
         _newFeeCategory = DebtFeeCategory.Other;
+        _existingDebtShares = [];
+        _debtSharedWithUserIds = [];
+        _debtSharedWithGroupIds = [];
     }
 
-    private void OpenEditDebt(Debt d)
+    private async Task OpenEditDebt(Debt d)
     {
         _editingDebt = new Debt
         {
@@ -1043,6 +1120,10 @@ else
         _newFeeName = string.Empty;
         _newFeeAmount = 0;
         _newFeeCategory = DebtFeeCategory.Other;
+
+        _existingDebtShares = (await ShareRepo.GetSharesForEntityAsync(ShareEntityType.Debt, d.Id)).ToList();
+        _debtSharedWithUserIds = [.. _existingDebtShares.Where(s => s.SharedWithUserId.HasValue).Select(s => s.SharedWithUserId!.Value)];
+        _debtSharedWithGroupIds = [.. _existingDebtShares.Where(s => s.SharedWithGroupId.HasValue).Select(s => s.SharedWithGroupId!.Value)];
     }
 
     private void CloseDebtModal() => _showDebtModal = false;
@@ -1077,11 +1158,43 @@ else
                 await DebtRepo.UpdateFeeAsync(fee);
         }
 
+        // Sync shares: remove unchecked, add newly checked
+        foreach (var existing in _existingDebtShares)
+        {
+            bool stillChecked = existing.SharedWithUserId.HasValue
+                ? _debtSharedWithUserIds.Contains(existing.SharedWithUserId.Value)
+                : _debtSharedWithGroupIds.Contains(existing.SharedWithGroupId!.Value);
+            if (!stillChecked)
+                await ShareRepo.RemoveShareAsync(existing.Id, _userId);
+        }
+        foreach (var uid in _debtSharedWithUserIds)
+        {
+            if (!_existingDebtShares.Any(s => s.SharedWithUserId == uid))
+                await ShareRepo.AddShareAsync(new SharePermission { EntityType = ShareEntityType.Debt, EntityId = savedId, GrantedByUserId = _userId, SharedWithUserId = uid });
+        }
+        foreach (var groupId in _debtSharedWithGroupIds)
+        {
+            if (!_existingDebtShares.Any(s => s.SharedWithGroupId == groupId))
+                await ShareRepo.AddShareAsync(new SharePermission { EntityType = ShareEntityType.Debt, EntityId = savedId, GrantedByUserId = _userId, SharedWithGroupId = groupId });
+        }
+
         _showDebtModal = false;
         await LoadAsync();
     }
 
     private void ConfirmDeleteDebt(Debt d) => _deleteDebtTarget = d;
+
+    private void ToggleDebtShareUser(int userId, bool add)
+    {
+        if (add) _debtSharedWithUserIds.Add(userId);
+        else _debtSharedWithUserIds.Remove(userId);
+    }
+
+    private void ToggleDebtShareGroup(int groupId, bool add)
+    {
+        if (add) _debtSharedWithGroupIds.Add(groupId);
+        else _debtSharedWithGroupIds.Remove(groupId);
+    }
 
     private async Task DeleteDebtConfirmed()
     {

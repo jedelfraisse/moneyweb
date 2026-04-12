@@ -6,6 +6,457 @@
 @attribute [Authorize]
 @inject CurrentUserService CurrentUserService
 @inject IUserGroupRepository GroupRepo
+@inject ISharingContactRepository ContactRepo
+
+<PageTitle>Sharing – MoneyWeb</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="mb-0">Sharing <PageInfoPopover Title="Sharing" Content="Share your bank accounts or income sources with a trusted partner or co-signer. Both people can then see a combined financial picture, making it easier to plan together without fully merging accounts." /></h1>
+</div>
+
+@if (_loading)
+{
+    <p>Loading&hellip;</p>
+}
+else
+{
+    @* ── Contacts ── *@
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <h2 class="h5 mb-0">Contacts</h2>
+        <button class="btn btn-sm btn-outline-primary" @onclick="OpenAddContact">Add Contact</button>
+    </div>
+    <p class="text-muted small mb-3">People you can share individual items with. They don't need an account yet — add by email.</p>
+
+    @if (_contacts.Any())
+    {
+        <div class="card mb-4">
+            <table class="table table-sm mb-0">
+                <thead>
+                    <tr>
+                        <th>Name / Email</th>
+                        <th>Status</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var contact in _contacts)
+                    {
+                        <tr>
+                            <td>
+                                @if (!string.IsNullOrWhiteSpace(contact.DisplayName))
+                                {
+                                    <span>@contact.DisplayName</span>
+                                    <span class="text-muted small ms-1">(@contact.InvitedEmail)</span>
+                                }
+                                else
+                                {
+                                    <span>@contact.InvitedEmail</span>
+                                }
+                            </td>
+                            <td>
+                                @if (contact.IsLinked)
+                                {
+                                    <span class="badge bg-success">Joined</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-warning text-dark">Pending</span>
+                                }
+                            </td>
+                            <td class="text-end">
+                                <button class="btn btn-sm btn-outline-danger"
+                                        @onclick="() => ConfirmDeleteContact(contact)">Remove</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+    else
+    {
+        <p class="text-muted small mb-4">No contacts yet.</p>
+    }
+
+    @* ── Sharing Groups ── *@
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <h2 class="h5 mb-0">Sharing Groups</h2>
+        <button class="btn btn-sm btn-outline-primary" @onclick="OpenAddGroup">New Group</button>
+    </div>
+    <p class="text-muted small mb-3">Groups let multiple contacts share access to your items at once.</p>
+
+    @if (!_groups.Any())
+    {
+        <p class="text-muted small">No sharing groups yet.</p>
+    }
+    else
+    {
+        @foreach (var group in _groups.OrderBy(g => g.Name))
+        {
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <div>
+                        <strong>@group.Name</strong>
+                        @if (group.OwnerId == _userId)
+                        {
+                            <span class="badge bg-primary ms-2">Owner</span>
+                        }
+                        @if (!string.IsNullOrEmpty(group.Notes))
+                        {
+                            <span class="text-muted small ms-2">@group.Notes</span>
+                        }
+                    </div>
+                    @if (group.OwnerId == _userId)
+                    {
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-sm btn-outline-secondary" @onclick="() => OpenEditGroup(group)">Edit</button>
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDeleteGroup(group)">Delete</button>
+                        </div>
+                    }
+                </div>
+                <div class="card-body">
+                    @if (group.Members.Any())
+                    {
+                        <table class="table table-sm mb-3">
+                            <thead>
+                                <tr>
+                                    <th>Name / Email</th>
+                                    <th>Status</th>
+                                    <th>Can See All</th>
+                                    @if (group.OwnerId == _userId)
+                                    {
+                                        <th>Actions</th>
+                                    }
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var member in group.Members)
+                                {
+                                    <tr>
+                                        <td>
+                                            @if (!string.IsNullOrEmpty(member.DisplayName))
+                                            {
+                                                <span>@member.DisplayName</span>
+                                                <span class="text-muted small ms-1">(@member.InvitedEmail)</span>
+                                            }
+                                            else
+                                            {
+                                                <span>@member.InvitedEmail</span>
+                                            }
+                                        </td>
+                                        <td>
+                                            @if (member.Status == GroupMemberStatus.Active)
+                                            {
+                                                <span class="badge bg-success">Active</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge bg-warning text-dark">Pending</span>
+                                            }
+                                        </td>
+                                        <td>
+                                            @if (group.OwnerId == _userId)
+                                            {
+                                                <input type="checkbox" class="form-check-input"
+                                                       checked="@member.CanSeeAll"
+                                                       @onchange="() => ToggleCanSeeAll(member, group.Id)" />
+                                            }
+                                            else
+                                            {
+                                                @(member.CanSeeAll ? "Yes" : "No")
+                                            }
+                                        </td>
+                                        @if (group.OwnerId == _userId)
+                                        {
+                                            <td>
+                                                <button class="btn btn-sm btn-outline-danger"
+                                                        disabled="@(member.UserId == _userId)"
+                                                        @onclick="() => RemoveMember(member, group.Id)">
+                                                    Remove
+                                                </button>
+                                            </td>
+                                        }
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                    else
+                    {
+                        <p class="text-muted small mb-2">No members yet.</p>
+                    }
+
+                    @if (group.OwnerId == _userId)
+                    {
+                        <div class="d-flex gap-2 align-items-start">
+                            <input class="form-control form-control-sm" style="max-width:280px"
+                                   placeholder="Email to invite"
+                                   @bind="_inviteEmail[group.Id]" />
+                            <button class="btn btn-sm btn-outline-primary"
+                                    @onclick="() => InviteToGroup(group.Id)">Invite</button>
+                        </div>
+                        @if (_inviteError.TryGetValue(group.Id, out var err) && err is not null)
+                        {
+                            <div class="alert alert-danger mt-2 py-1">@err</div>
+                        }
+                    }
+                </div>
+            </div>
+        }
+    }
+}
+
+@* ── Add Contact Modal ── *@
+@if (_showContactModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.4)">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Add Contact</h5>
+                    <button type="button" class="btn-close" @onclick="() => _showContactModal = false"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Email address <span class="text-danger">*</span></label>
+                        <input class="form-control" type="email" @bind="_contactEmail" placeholder="their@email.com" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Display name <span class="text-muted small">(optional)</span></label>
+                        <input class="form-control" @bind="_contactDisplayName" placeholder="e.g. Jane" />
+                    </div>
+                    @if (_contactError is not null)
+                    {
+                        <div class="alert alert-danger py-1">@_contactError</div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="() => _showContactModal = false">Cancel</button>
+                    <button class="btn btn-primary" @onclick="SaveContact">Add</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ── Delete Contact Confirm ── *@
+@if (_deleteContactTarget is not null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.4)">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header"><h5 class="modal-title">Remove Contact</h5></div>
+                <div class="modal-body">
+                    <p>Remove <strong>@_deleteContactTarget.Label</strong> from your contacts?</p>
+                    <p class="text-muted small">Any items shared directly with this person will no longer be visible to them.</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="() => _deleteContactTarget = null">Cancel</button>
+                    <button class="btn btn-danger" @onclick="DeleteContactConfirmed">Remove</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ── Add / Edit Group Modal ── *@
+@if (_showGroupModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.4)">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@(_editingGroup.Id == 0 ? "New" : "Edit") Sharing Group</h5>
+                    <button type="button" class="btn-close" @onclick="CloseGroupModal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Name</label>
+                        <input class="form-control" @bind="_editingGroup.Name" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Notes</label>
+                        <textarea class="form-control" rows="2" @bind="_editingGroup.Notes"></textarea>
+                    </div>
+                    @if (_groupError is not null)
+                    {
+                        <div class="alert alert-danger">@_groupError</div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CloseGroupModal">Cancel</button>
+                    <button class="btn btn-primary" @onclick="SaveGroup">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ── Delete Group Confirm Modal ── *@
+@if (_deleteGroupTarget is not null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.4)">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header"><h5 class="modal-title">Delete Sharing Group</h5></div>
+                <div class="modal-body">
+                    <p>Delete sharing group <strong>@_deleteGroupTarget.Name</strong>?</p>
+                    <p class="text-muted small">All invited members will be removed. Shared items will become private again.</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="() => _deleteGroupTarget = null">Cancel</button>
+                    <button class="btn btn-danger" @onclick="DeleteGroupConfirmed">Delete Group</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _loading = true;
+    private int _userId;
+
+    private List<SharingContact> _contacts = [];
+    private bool _showContactModal;
+    private string _contactEmail = string.Empty;
+    private string? _contactDisplayName;
+    private string? _contactError;
+    private SharingContact? _deleteContactTarget;
+
+    private List<UserGroup> _groups = [];
+    private bool _showGroupModal;
+    private UserGroup _editingGroup = new();
+    private string? _groupError;
+    private UserGroup? _deleteGroupTarget;
+    private Dictionary<int, string> _inviteEmail = [];
+    private Dictionary<int, string?> _inviteError = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = await CurrentUserService.GetCurrentUserAsync();
+        if (user?.IsApproved != true) return;
+        _userId = user.Id;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _contacts = (await ContactRepo.GetAllAsync(_userId)).ToList();
+        _groups = (await GroupRepo.GetAllForUserAsync(_userId)).ToList();
+        foreach (var g in _groups)
+        {
+            _inviteEmail.TryAdd(g.Id, string.Empty);
+            _inviteError.TryAdd(g.Id, null);
+        }
+        _loading = false;
+    }
+
+    // ── Contacts ──
+
+    private void OpenAddContact()
+    {
+        _contactEmail = string.Empty;
+        _contactDisplayName = null;
+        _contactError = null;
+        _showContactModal = true;
+    }
+
+    private async Task SaveContact()
+    {
+        _contactError = null;
+        if (string.IsNullOrWhiteSpace(_contactEmail)) { _contactError = "Email is required."; return; }
+        try
+        {
+            await ContactRepo.AddAsync(_userId, _contactEmail.Trim(), _contactDisplayName?.Trim());
+            _showContactModal = false;
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _contactError = ex.Message.Contains("UQ_SharingContacts") ? "This contact is already in your list." : ex.Message;
+        }
+    }
+
+    private void ConfirmDeleteContact(SharingContact c) => _deleteContactTarget = c;
+
+    private async Task DeleteContactConfirmed()
+    {
+        if (_deleteContactTarget is null) return;
+        await ContactRepo.RemoveAsync(_deleteContactTarget.Id, _userId);
+        _deleteContactTarget = null;
+        await LoadAsync();
+    }
+
+    // ── Groups ──
+
+    private void OpenAddGroup()
+    {
+        _editingGroup = new UserGroup { OwnerId = _userId };
+        _groupError = null;
+        _showGroupModal = true;
+    }
+
+    private void OpenEditGroup(UserGroup g)
+    {
+        _editingGroup = new UserGroup { Id = g.Id, OwnerId = g.OwnerId, Name = g.Name, Notes = g.Notes };
+        _groupError = null;
+        _showGroupModal = true;
+    }
+
+    private void CloseGroupModal() => _showGroupModal = false;
+
+    private async Task SaveGroup()
+    {
+        if (string.IsNullOrWhiteSpace(_editingGroup.Name)) { _groupError = "Name is required."; return; }
+        _editingGroup.OwnerId = _userId;
+        if (_editingGroup.Id == 0)
+            await GroupRepo.CreateAsync(_editingGroup);
+        else
+            await GroupRepo.UpdateAsync(_editingGroup);
+        _showGroupModal = false;
+        await LoadAsync();
+    }
+
+    private void ConfirmDeleteGroup(UserGroup g) => _deleteGroupTarget = g;
+
+    private async Task DeleteGroupConfirmed()
+    {
+        if (_deleteGroupTarget is null) return;
+        await GroupRepo.DeleteAsync(_deleteGroupTarget.Id, _userId);
+        _deleteGroupTarget = null;
+        await LoadAsync();
+    }
+
+    private async Task InviteToGroup(int groupId)
+    {
+        _inviteError[groupId] = null;
+        var email = _inviteEmail.TryGetValue(groupId, out var e) ? e : string.Empty;
+        if (string.IsNullOrWhiteSpace(email)) { _inviteError[groupId] = "Email is required."; return; }
+        try
+        {
+            await GroupRepo.InviteMemberAsync(groupId, _userId, email.Trim());
+            _inviteEmail[groupId] = string.Empty;
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            _inviteError[groupId] = ex.Message;
+        }
+    }
+
+    private async Task ToggleCanSeeAll(UserGroupMember member, int groupId)
+    {
+        await GroupRepo.UpdateMemberCanSeeAllAsync(member.Id, groupId, _userId, !member.CanSeeAll);
+        await LoadAsync();
+    }
+
+    private async Task RemoveMember(UserGroupMember member, int groupId)
+    {
+        await GroupRepo.RemoveMemberAsync(member.Id, groupId, _userId);
+        await LoadAsync();
+    }
+}
+
 
 <PageTitle>Sharing – MoneyWeb</PageTitle>
 
@@ -189,108 +640,4 @@ else
             </div>
         </div>
     </div>
-}
-
-@code {
-    private bool _loading = true;
-    private int _userId;
-    private List<UserGroup> _groups = [];
-
-    private bool _showGroupModal;
-    private UserGroup _editingGroup = new();
-    private string? _groupError;
-    private UserGroup? _deleteGroupTarget;
-
-    private Dictionary<int, string> _inviteEmail = [];
-    private Dictionary<int, string?> _inviteError = [];
-
-    protected override async Task OnInitializedAsync()
-    {
-        var user = await CurrentUserService.GetCurrentUserAsync();
-        if (user?.IsApproved != true) return;
-        _userId = user.Id;
-        await LoadAsync();
-    }
-
-    private async Task LoadAsync()
-    {
-        _groups = (await GroupRepo.GetAllForUserAsync(_userId)).ToList();
-        foreach (var g in _groups)
-        {
-            _inviteEmail.TryAdd(g.Id, string.Empty);
-            _inviteError.TryAdd(g.Id, null);
-        }
-        _loading = false;
-    }
-
-    private void OpenAddGroup()
-    {
-        _editingGroup = new UserGroup { OwnerId = _userId };
-        _groupError = null;
-        _showGroupModal = true;
-    }
-
-    private void OpenEditGroup(UserGroup g)
-    {
-        _editingGroup = new UserGroup { Id = g.Id, OwnerId = g.OwnerId, Name = g.Name, Notes = g.Notes };
-        _groupError = null;
-        _showGroupModal = true;
-    }
-
-    private void CloseGroupModal() => _showGroupModal = false;
-
-    private async Task SaveGroup()
-    {
-        if (string.IsNullOrWhiteSpace(_editingGroup.Name)) { _groupError = "Name is required."; return; }
-        _editingGroup.OwnerId = _userId;
-        if (_editingGroup.Id == 0)
-            await GroupRepo.CreateAsync(_editingGroup);
-        else
-            await GroupRepo.UpdateAsync(_editingGroup);
-        _showGroupModal = false;
-        await LoadAsync();
-    }
-
-    private void ConfirmDeleteGroup(UserGroup g) => _deleteGroupTarget = g;
-
-    private async Task DeleteGroupConfirmed()
-    {
-        if (_deleteGroupTarget is null) return;
-        await GroupRepo.DeleteAsync(_deleteGroupTarget.Id, _userId);
-        _deleteGroupTarget = null;
-        await LoadAsync();
-    }
-
-    private async Task InviteToGroup(int groupId)
-    {
-        _inviteError[groupId] = null;
-        var email = _inviteEmail.TryGetValue(groupId, out var e) ? e : string.Empty;
-        if (string.IsNullOrWhiteSpace(email))
-        {
-            _inviteError[groupId] = "Email is required.";
-            return;
-        }
-        try
-        {
-            await GroupRepo.InviteMemberAsync(groupId, _userId, email.Trim());
-            _inviteEmail[groupId] = string.Empty;
-            await LoadAsync();
-        }
-        catch (Exception ex)
-        {
-            _inviteError[groupId] = ex.Message;
-        }
-    }
-
-    private async Task ToggleCanSeeAll(UserGroupMember member, int groupId)
-    {
-        await GroupRepo.UpdateMemberCanSeeAllAsync(member.Id, groupId, _userId, !member.CanSeeAll);
-        await LoadAsync();
-    }
-
-    private async Task RemoveMember(UserGroupMember member, int groupId)
-    {
-        await GroupRepo.RemoveMemberAsync(member.Id, groupId, _userId);
-        await LoadAsync();
-    }
 }

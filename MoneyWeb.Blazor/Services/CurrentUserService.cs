@@ -9,7 +9,7 @@ namespace MoneyWeb.Blazor.Services;
 /// provisioning a new (unapproved) record on first login.
 /// Scoped per-circuit — safe to cache within a single connection.
 /// </summary>
-public class CurrentUserService(IUserRepository userRepo, IUserGroupRepository userGroupRepo, IHttpContextAccessor httpContextAccessor)
+public class CurrentUserService(IUserRepository userRepo, IUserGroupRepository userGroupRepo, ISharingContactRepository contactRepo, IHttpContextAccessor httpContextAccessor)
 {
     private User? _cached;
 
@@ -44,8 +44,9 @@ public class CurrentUserService(IUserRepository userRepo, IUserGroupRepository u
                 IsAdmin = false
             };
             user.Id = await userRepo.CreateAsync(user);
-            // Auto-join any pending group invites for this email
+            // Auto-join any pending group invites and link sharing contacts for this email
             await userGroupRepo.CheckAndJoinPendingInvitesAsync(user.Id, email);
+            await contactRepo.LinkUserAsync(email, user.Id);
             // Re-fetch so IsApproved reflects any auto-approval from group invite
             user = await userRepo.GetByIdAsync(user.Id) ?? user;
         }

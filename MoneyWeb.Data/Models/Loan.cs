@@ -18,6 +18,9 @@ public class Loan
     public bool IsSettled { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
+
+    /// <summary>Populated when retrieved via GetSharedWithMeAsync — the lender's display name.</summary>
+    public string? OwnerDisplayName { get; set; }
 }
 
 public enum LoanTransactionType { Payment, Additional, Interest, Fee }

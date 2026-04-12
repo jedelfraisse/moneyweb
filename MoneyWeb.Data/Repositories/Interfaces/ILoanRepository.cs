@@ -13,4 +13,5 @@ public interface ILoanRepository
     Task<int> AddTransactionAsync(LoanTransaction tx);
     Task DeleteTransactionAsync(int id, int userId);
     Task<IEnumerable<Loan>> GetAllActiveWithInterestAsync();
+    Task<IEnumerable<Loan>> GetSharedWithMeAsync(int userId);
 }

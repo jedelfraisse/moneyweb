@@ -23,6 +23,7 @@ public static class DataServiceExtensions
         services.AddScoped<IIncomeRepository>(_ => new IncomeRepository(connectionString));
         services.AddScoped<IUserGroupRepository>(_ => new UserGroupRepository(connectionString));
         services.AddScoped<IShareRepository>(_ => new ShareRepository(connectionString));
+        services.AddScoped<ISharingContactRepository>(_ => new SharingContactRepository(connectionString));
         services.AddScoped<ICashFlowRepository>(_ => new CashFlowRepository(connectionString));
         services.AddScoped<ISinkingFundRepository, SinkingFundRepository>(
             _ => new SinkingFundRepository(connectionString));

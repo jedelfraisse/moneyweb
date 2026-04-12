@@ -142,6 +142,39 @@ else
     </div>
 }
 
+@if (_sharedLoans.Any())
+{
+    <h2 class="h5 mt-4">Shared With You</h2>
+    <p class="text-muted small">Loans that others have shared with you (read-only).</p>
+    <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th>From</th>
+                    <th>Borrower</th>
+                    <th class="text-end">Principal</th>
+                    <th class="text-end">Balance</th>
+                    <th>Loan Date</th>
+                    <th>Due Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var loan in _sharedLoans)
+                {
+                    <tr>
+                        <td><span class="badge bg-secondary">@loan.OwnerDisplayName</span></td>
+                        <td class="fw-semibold">@loan.Borrower</td>
+                        <td class="text-end">@loan.Principal.ToString("C")</td>
+                        <td class="text-end">@loan.Balance.ToString("C")</td>
+                        <td>@loan.LoanDate.ToString("MMM d, yyyy")</td>
+                        <td>@(loan.ExpectedRepaymentDate?.ToString("MMM d, yyyy") ?? "—")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
 @if (_showModal)
 {
     <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.5)">
@@ -228,6 +261,7 @@ else
     private bool _loading = true;
     private List<Loan> _active = [];
     private List<Loan> _settled = [];
+    private List<Loan> _sharedLoans = [];
     private bool _showSettled;
     private string? _errorMessage;
 
@@ -256,6 +290,7 @@ else
         var all = (await LoanRepo.GetAllAsync(_userId)).ToList();
         _active = all.Where(l => !l.IsSettled).ToList();
         _settled = all.Where(l => l.IsSettled).ToList();
+        _sharedLoans = (await LoanRepo.GetSharedWithMeAsync(_userId)).ToList();
         _loading = false;
     }
 
