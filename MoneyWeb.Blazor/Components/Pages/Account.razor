@@ -27,10 +27,25 @@ else
                         <dd class="col-sm-8">@_user.Email</dd>
                         <dt class="col-sm-4">Member since</dt>
                         <dd class="col-sm-8">@_user.CreatedAt.ToString("MMMM d, yyyy")</dd>
+                        <dt class="col-sm-4">Account type</dt>
+                        <dd class="col-sm-8">
+                            @if (_user.IsApproved)
+                            {
+                                <span class="badge bg-success">Free</span>
+                                <span class="text-muted small ms-2">Full access to all features</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-warning text-dark">Pending</span>
+                                <span class="text-muted small ms-2">Awaiting approval — features will unlock once approved</span>
+                            }
+                        </dd>
                     </dl>
                 </div>
             </div>
 
+            @if (_user.IsApproved)
+            {
             <div class="card mb-4">
                 <div class="card-body">
                     <h5 class="card-title">Preferences</h5>
@@ -61,6 +76,7 @@ else
                     <button class="btn btn-primary btn-sm" @onclick="SavePreferences">Save Preferences</button>
                 </div>
             </div>
+            }
 
             <div class="card border-danger">
                 <div class="card-body">
