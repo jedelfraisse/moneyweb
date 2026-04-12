@@ -1,105 +1,73 @@
-﻿@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
 @inject CurrentUserService CurrentUserSvc
 
-<div class="top-row ps-3 navbar navbar-dark">
-    <div class="container-fluid">
-        <a class="navbar-brand" href="">MoneyWeb</a>
+<nav class="navbar navbar-expand-lg navbar-dark sticky-top shadow-sm">
+    <div class="container-xl">
+        <a class="navbar-brand fw-semibold" href="/">💰 MoneyWeb</a>
+        <button class="navbar-toggler" type="button" @onclick="ToggleNavMenu" aria-label="Toggle navigation">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="@(_navCollapsed ? "collapse" : "") navbar-collapse">
+            <AuthorizeView>
+                <Authorized>
+                    @if (_isApproved)
+                    {
+                        <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                            <li class="nav-item">
+                                <NavLink class="nav-link" href="bank-accounts">Bank Accounts</NavLink>
+                            </li>
+                            <li class="nav-item">
+                                <NavLink class="nav-link" href="income">Income</NavLink>
+                            </li>
+                            <li class="nav-item">
+                                <NavLink class="nav-link" href="debts">Debts</NavLink>
+                            </li>
+                            <li class="nav-item">
+                                <NavLink class="nav-link" href="bills">Bills</NavLink>
+                            </li>
+                            <li class="nav-item">
+                                <NavLink class="nav-link" href="sinking-funds">Sinking Funds</NavLink>
+                            </li>
+                            <li class="nav-item">
+                                <NavLink class="nav-link" href="loans">Loans</NavLink>
+                            </li>
+                            <li class="nav-item">
+                                <NavLink class="nav-link" href="sharing">Sharing</NavLink>
+                            </li>
+                        </ul>
+                    }
+                    <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
+                        @if (_isAdmin)
+                        {
+                            <li class="nav-item">
+                                <NavLink class="nav-link" href="admin/users">⚙️ Admin</NavLink>
+                            </li>
+                        }
+                        <li class="nav-item">
+                            <NavLink class="nav-link" href="account">👤 @_displayName</NavLink>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="MicrosoftIdentity/Account/SignOut">Sign Out</a>
+                        </li>
+                    </ul>
+                </Authorized>
+                <NotAuthorized>
+                    <ul class="navbar-nav ms-auto">
+                        <li class="nav-item">
+                            <a class="nav-link" href="MicrosoftIdentity/Account/SignIn">Sign In</a>
+                        </li>
+                    </ul>
+                </NotAuthorized>
+            </AuthorizeView>
+        </div>
     </div>
-</div>
-
-<input type="checkbox" title="Navigation menu" class="navbar-toggler" />
-
-<div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
-    <nav class="nav flex-column">
-        <AuthorizeView>
-            <Authorized>
-                <div class="nav-item px-3">
-                    <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                        <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Home
-                    </NavLink>
-                </div>
-
-                @if (_isApproved)
-                {
-                    <div class="nav-item px-3">
-                        <NavLink class="nav-link" href="bank-accounts">
-                            <span class="bi bi-bank-nav-menu" aria-hidden="true"></span> Bank Accounts
-                        </NavLink>
-                    </div>
-
-                    <div class="nav-item px-3">
-                        <NavLink class="nav-link" href="income">
-                            <span class="bi bi-cash-stack-nav-menu" aria-hidden="true"></span> Income
-                        </NavLink>
-                    </div>
-
-                    <div class="nav-item px-3">
-                        <NavLink class="nav-link" href="debts">
-                            <span class="bi bi-credit-card-fill-nav-menu" aria-hidden="true"></span> Debts
-                        </NavLink>
-                    </div>
-
-                    <div class="nav-item px-3">
-                        <NavLink class="nav-link" href="bills">
-                            <span class="bi bi-calendar-check-fill-nav-menu" aria-hidden="true"></span> Bills
-                        </NavLink>
-                    </div>
-
-                    <div class="nav-item px-3">
-                        <NavLink class="nav-link" href="sinking-funds">
-                            <span class="bi bi-piggy-bank-fill-nav-menu" aria-hidden="true"></span> Sinking Funds
-                        </NavLink>
-                    </div>
-
-                    <div class="nav-item px-3">
-                        <NavLink class="nav-link" href="loans">
-                            <span class="bi bi-people-fill-nav-menu" aria-hidden="true"></span> Loans
-                        </NavLink>
-                    </div>
-
-                    <div class="nav-item px-3">
-                        <NavLink class="nav-link" href="sharing">
-                            <span class="bi bi-people-fill-nav-menu" aria-hidden="true"></span> Sharing
-                        </NavLink>
-                    </div>
-                }
-
-                @if (_isAdmin)
-                {
-                    <div class="nav-item px-3 mt-2">
-                        <NavLink class="nav-link" href="admin/users">
-                            <span class="bi bi-shield-lock-fill-nav-menu" aria-hidden="true"></span> Users
-                        </NavLink>
-                    </div>
-                }
-
-                <div class="nav-item px-3 mt-3 border-top pt-2">
-                    <NavLink class="nav-link" href="account">
-                        <span class="bi bi-person-fill-nav-menu" aria-hidden="true"></span> @_displayName
-                    </NavLink>
-                </div>
-
-                <div class="nav-item px-3 mb-2">
-                    <a class="nav-link" href="MicrosoftIdentity/Account/SignOut">
-                        <span class="bi bi-box-arrow-right-nav-menu" aria-hidden="true"></span> Sign Out
-                    </a>
-                </div>
-            </Authorized>
-            <NotAuthorized>
-                <div class="nav-item px-3 mt-3">
-                    <a class="nav-link" href="MicrosoftIdentity/Account/SignIn">
-                        <span class="bi bi-box-arrow-in-right-nav-menu" aria-hidden="true"></span> Sign In
-                    </a>
-                </div>
-            </NotAuthorized>
-        </AuthorizeView>
-    </nav>
-</div>
+</nav>
 
 @code {
     private bool _isApproved;
     private bool _isAdmin;
     private string _displayName = string.Empty;
+    private bool _navCollapsed = true;
 
     protected override async Task OnInitializedAsync()
     {
@@ -108,5 +76,8 @@
         _isAdmin = user?.IsAdmin == true;
         _displayName = user?.DisplayName ?? string.Empty;
     }
+
+    private void ToggleNavMenu() => _navCollapsed = !_navCollapsed;
 }
+
 
