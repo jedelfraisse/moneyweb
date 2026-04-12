@@ -31,9 +31,25 @@ else
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h1 class="mb-0">@_account.Name <span class="text-muted fs-5">Cash Flow</span></h1>
         <div class="d-flex align-items-center gap-3">
-            <div>
-                <span class="text-muted small me-2">Current balance:</span>
-                <span class="fw-bold fs-5">@_account.CurrentBalance.ToString("C")</span>
+            <div class="d-flex align-items-center gap-2">
+                @if (_editingBalance)
+                {
+                    <span class="text-muted small">Current balance:</span>
+                    <div class="input-group input-group-sm" style="width:160px">
+                        <span class="input-group-text">$</span>
+                        <input class="form-control" type="number" step="0.01"
+                               @bind="_newBalance" @bind:event="oninput" />
+                    </div>
+                    <button class="btn btn-sm btn-success" @onclick="SaveBalance">Save</button>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => _editingBalance = false">✕</button>
+                }
+                else
+                {
+                    <span class="text-muted small">Current balance:</span>
+                    <span class="fw-bold fs-5">@_account.CurrentBalance.ToString("C")</span>
+                    <button class="btn btn-sm btn-outline-secondary" title="Update current balance"
+                            @onclick="BeginEditBalance">✏️</button>
+                }
             </div>
             <button class="btn btn-primary" @onclick="OpenAddModal">+ Add Transaction</button>
         </div>
@@ -86,6 +102,10 @@ else
                                     @if (!t.IsProjected)
                                     {
                                         <span class="badge bg-success">✅ Confirmed</span>
+                                    }
+                                    else if (t.TransactionDate < DateOnly.FromDateTime(DateTime.Today))
+                                    {
+                                        <span class="badge bg-danger" title="Projected date has passed — confirm or skip">⚠️ Overdue</span>
                                     }
                                     else if (t.IsSubmitted && t.IsAutoDraft)
                                     {
@@ -232,6 +252,10 @@ else
     private decimal _finalBalance;
     private int? _changingDateId;
 
+    // Balance editing
+    private bool _editingBalance;
+    private decimal _newBalance;
+
     // Submit flow
     private int? _submittingId;
     private DateOnly _submitDate;
@@ -262,8 +286,10 @@ else
 
     private async Task LoadAsync()
     {
-        var from = DateOnly.FromDateTime(DateTime.Today);
-        var to = from.AddMonths(60);
+        // Start from the beginning of the current month so past-pending items are visible
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var from = new DateOnly(today.Year, today.Month, 1);
+        var to = today.AddMonths(60);
         var raw = (await CashFlowRepo.GetForAccountAsync(BankAccountId, _userId, from, to))
             .OrderBy(t => t.TransactionDate).ThenBy(t => t.Id)
             .ToList();
@@ -319,6 +345,20 @@ else
     private async Task SkipTransaction(CashFlowTransaction t)
     {
         await CashFlowRepo.DeleteAsync(t.Id, _userId);
+        await LoadAsync();
+    }
+
+    private void BeginEditBalance()
+    {
+        _newBalance = _account!.CurrentBalance;
+        _editingBalance = true;
+    }
+
+    private async Task SaveBalance()
+    {
+        _account!.CurrentBalance = _newBalance;
+        await AccountRepo.UpdateAsync(_account);
+        _editingBalance = false;
         await LoadAsync();
     }
 
