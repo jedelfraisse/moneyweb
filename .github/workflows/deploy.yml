@@ -1,0 +1,80 @@
+name: Build & Deploy to Mochahost
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:  # allow manual runs from GitHub UI
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore MoneyWeb.Blazor/MoneyWeb.Blazor.csproj
+
+      - name: Write production appsettings
+        run: |
+          cat > MoneyWeb.Blazor/appsettings.Production.json << 'EOF'
+          ${{ secrets.APPSETTINGS_PRODUCTION }}
+          EOF
+
+      - name: Publish
+        run: |
+          dotnet publish MoneyWeb.Blazor/MoneyWeb.Blazor.csproj \
+            -c Release \
+            -o ./publish \
+            --no-restore
+
+      - name: Take app offline (rename _app_offline.htm → app_offline.htm)
+        run: |
+          python3 -c "
+          import ftplib
+          ftp = ftplib.FTP('${{ secrets.FTP_SERVER }}')
+          ftp.login('${{ secrets.FTP_USERNAME }}', '${{ secrets.FTP_PASSWORD }}')
+          try:
+              ftp.rename('_app_offline.htm', 'app_offline.htm')
+              print('App is now offline')
+          except ftplib.error_perm as e:
+              print(f'Rename skipped (may already be offline): {e}')
+          ftp.quit()
+          "
+
+      - name: Deploy via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          local-dir: ./publish/
+          server-dir: /
+          dangerous-clean-slate: false
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/appsettings.Development.json
+            **/app_offline.htm
+            **/_app_offline.htm
+
+      - name: Bring app back online (rename app_offline.htm → _app_offline.htm)
+        if: always()  # run even if deploy step fails, so site doesn't stay stuck offline
+        run: |
+          python3 -c "
+          import ftplib
+          ftp = ftplib.FTP('${{ secrets.FTP_SERVER }}')
+          ftp.login('${{ secrets.FTP_USERNAME }}', '${{ secrets.FTP_PASSWORD }}')
+          try:
+              ftp.rename('app_offline.htm', '_app_offline.htm')
+              print('App is back online')
+          except ftplib.error_perm as e:
+              print(f'Rename skipped (may already be online): {e}')
+          ftp.quit()
+          "

@@ -483,3 +483,4 @@ $RECYCLE.BIN/
 
 # Local dev secrets - do not commit
 appsettings.Development.json
+appsettings.Production.json
