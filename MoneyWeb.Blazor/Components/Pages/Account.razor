@@ -55,18 +55,20 @@ else
                             <span class="text-muted fw-normal">— how far forward to project transactions</span>
                         </label>
                         <div class="d-flex align-items-center gap-3">
-                            <input type="range" class="form-range flex-grow-1"
-                                   min="1" max="60" step="1"
-                                   value="@_user.CashFlowHorizonMonths"
-                                   @oninput="e => _user.CashFlowHorizonMonths = int.Parse(e.Value!.ToString()!)" />
+                            <div class="flex-grow-1">
+                                <input type="range" class="form-range w-100"
+                                       min="1" max="60" step="1"
+                                       value="@_user.CashFlowHorizonMonths"
+                                       @oninput="e => _user.CashFlowHorizonMonths = int.Parse(e.Value!.ToString()!)" />
+                                <div class="d-flex justify-content-between">
+                                    <small class="text-muted">1 month</small>
+                                    <small class="text-muted">5 years</small>
+                                </div>
+                            </div>
                             <span class="text-nowrap fw-semibold" style="min-width:6rem">
                                 @_user.CashFlowHorizonMonths mo
                                 <span class="text-muted fw-normal small">(~@((_user.CashFlowHorizonMonths / 12.0m).ToString("0.#")) yr)</span>
                             </span>
-                        </div>
-                        <div class="d-flex justify-content-between">
-                            <small class="text-muted">1 month</small>
-                            <small class="text-muted">5 years</small>
                         </div>
                     </div>
                     @if (_prefsSaved)
