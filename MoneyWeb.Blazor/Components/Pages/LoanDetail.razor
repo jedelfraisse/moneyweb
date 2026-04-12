@@ -97,7 +97,16 @@ else
         </div>
     }
 
-    <h5 class="mb-2">Transactions</h5>
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <h5 class="mb-0">Transactions</h5>
+        @if (_transactions.Any())
+        {
+            <div class="btn-group btn-group-sm" role="group">
+                <button class="btn @(!_sortDescending ? "btn-secondary" : "btn-outline-secondary")" @onclick="() => _sortDescending = false">Earliest First</button>
+                <button class="btn @(_sortDescending ? "btn-secondary" : "btn-outline-secondary")" @onclick="() => _sortDescending = true">Latest First</button>
+            </div>
+        }
+    </div>
     @if (!_transactions.Any())
     {
         <p class="text-muted">No transactions recorded yet.</p>
@@ -108,16 +117,17 @@ else
             <table class="table table-hover align-middle">
                 <thead class="table-light">
                     <tr>
-                        <th>Date</th><th>Type</th><th class="text-end">Amount</th><th>Notes</th><th></th>
+                        <th>Date</th><th>Type</th><th class="text-end">Amount</th><th class="text-end">Balance</th><th>Notes</th><th></th>
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var tx in _transactions)
+                    @foreach (var (tx, runningBalance) in GetDisplayRows())
                     {
                         <tr>
                             <td>@tx.TransactionDate.ToString("MMM d, yyyy")</td>
                             <td>@TxBadge(tx.Type)</td>
                             <td class="text-end fw-semibold">@tx.Amount.ToString("C")</td>
+                            <td class="text-end fw-semibold @(runningBalance > 0 ? "text-danger" : "text-success")">@runningBalance.ToString("C")</td>
                             <td class="text-muted small">@(tx.Notes ?? "—")</td>
                             <td class="text-end">
                                 <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteTransactionAsync(tx)">Delete</button>
@@ -241,6 +251,7 @@ else
     private int _userId;
 
     private bool _showTxModal;
+    private bool _sortDescending = false;
     private DateOnly _txDate;
     private LoanTransactionType _txType = LoanTransactionType.Payment;
     private decimal _txAmount;
@@ -375,6 +386,30 @@ else
         await LoanRepo.UpdateAsync(_editLoan);
         _showEditModal = false;
         await LoadAsync();
+    }
+
+    private IEnumerable<(LoanTransaction Tx, decimal RunningBalance)> GetDisplayRows()
+    {
+        // Original principal = current principal minus any additions from transactions
+        var originalPrincipal = _loan!.Principal
+            - _transactions.Where(t => t.Type != LoanTransactionType.Payment).Sum(t => t.Amount);
+
+        var chronological = _transactions
+            .OrderBy(t => t.TransactionDate)
+            .ThenBy(t => t.Id)
+            .ToList();
+
+        var rows = new List<(LoanTransaction, decimal)>();
+        decimal balance = originalPrincipal;
+        foreach (var tx in chronological)
+        {
+            balance = tx.Type == LoanTransactionType.Payment
+                ? balance - tx.Amount
+                : balance + tx.Amount;
+            rows.Add((tx, balance));
+        }
+
+        return _sortDescending ? rows.AsEnumerable().Reverse() : rows;
     }
 
     private MarkupString TxBadge(LoanTransactionType type) => type switch
