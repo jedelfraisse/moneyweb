@@ -55,7 +55,10 @@ public class UserRepository(string connectionString) : IUserRepository
             UPDATE Users SET
                 Email = @Email, DisplayName = @DisplayName,
                 IsApproved = @IsApproved, IsAdmin = @IsAdmin,
-                CashFlowHorizonMonths = @CashFlowHorizonMonths
+                CashFlowHorizonMonths = @CashFlowHorizonMonths,
+                ShowSinkingFunds = @ShowSinkingFunds,
+                ShowLoans = @ShowLoans,
+                ShowFamily = @ShowFamily
             WHERE Id = @Id
             """, user);
     }

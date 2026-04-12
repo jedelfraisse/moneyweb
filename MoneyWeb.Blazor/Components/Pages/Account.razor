@@ -62,7 +62,7 @@ else
                                        @oninput="e => _user.CashFlowHorizonMonths = int.Parse(e.Value!.ToString()!)" />
                                 <div class="d-flex justify-content-between">
                                     <small class="text-muted">1 month</small>
-                                    <small class="text-muted">5 years</small>
+                                    <small class="text-end text-muted">5 years</small>
                                 </div>
                             </div>
                             <span class="text-nowrap fw-semibold" style="min-width:6rem">
@@ -71,6 +71,30 @@ else
                             </span>
                         </div>
                     </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Navigation Sections</label>
+                        <div class="text-muted small mb-2">Show or hide optional sections in the top menu.</div>
+                        <div class="form-check form-switch mb-1">
+                            <input class="form-check-input" type="checkbox" id="toggleSinkingFunds"
+                                   checked="@_user.ShowSinkingFunds"
+                                   @onchange="e => _user.ShowSinkingFunds = (bool)e.Value!" />
+                            <label class="form-check-label" for="toggleSinkingFunds">Sinking Funds</label>
+                        </div>
+                        <div class="form-check form-switch mb-1">
+                            <input class="form-check-input" type="checkbox" id="toggleLoans"
+                                   checked="@_user.ShowLoans"
+                                   @onchange="e => _user.ShowLoans = (bool)e.Value!" />
+                            <label class="form-check-label" for="toggleLoans">Loans</label>
+                        </div>
+                        <div class="form-check form-switch mb-1">
+                            <input class="form-check-input" type="checkbox" id="toggleFamily"
+                                   checked="@_user.ShowFamily"
+                                   @onchange="e => _user.ShowFamily = (bool)e.Value!" />
+                            <label class="form-check-label" for="toggleFamily">Family</label>
+                        </div>
+                    </div>
+
                     @if (_prefsSaved)
                     {
                         <div class="alert alert-success py-1 px-2 small mb-2">Preferences saved.</div>

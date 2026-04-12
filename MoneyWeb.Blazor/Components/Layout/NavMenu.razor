@@ -25,12 +25,24 @@
                             <li class="nav-item">
                                 <NavLink class="nav-link" href="bills">Bills</NavLink>
                             </li>
-                            <li class="nav-item">
-                                <NavLink class="nav-link" href="sinking-funds">Sinking Funds</NavLink>
-                            </li>
-                            <li class="nav-item">
-                                <NavLink class="nav-link" href="loans">Loans</NavLink>
-                            </li>
+                            @if (_showSinkingFunds)
+                            {
+                                <li class="nav-item">
+                                    <NavLink class="nav-link" href="sinking-funds">Sinking Funds</NavLink>
+                                </li>
+                            }
+                            @if (_showLoans)
+                            {
+                                <li class="nav-item">
+                                    <NavLink class="nav-link" href="loans">Loans</NavLink>
+                                </li>
+                            }
+                            @if (_showFamily)
+                            {
+                                <li class="nav-item">
+                                    <NavLink class="nav-link" href="family">Family</NavLink>
+                                </li>
+                            }
                             <li class="nav-item">
                                 <NavLink class="nav-link" href="sharing">Sharing</NavLink>
                             </li>
@@ -68,6 +80,9 @@
     private bool _isAdmin;
     private string _displayName = string.Empty;
     private bool _navCollapsed = true;
+    private bool _showSinkingFunds = true;
+    private bool _showLoans = true;
+    private bool _showFamily = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -75,6 +90,12 @@
         _isApproved = user?.IsApproved == true;
         _isAdmin = user?.IsAdmin == true;
         _displayName = user?.DisplayName ?? string.Empty;
+        if (user is not null)
+        {
+            _showSinkingFunds = user.ShowSinkingFunds;
+            _showLoans = user.ShowLoans;
+            _showFamily = user.ShowFamily;
+        }
     }
 
     private void ToggleNavMenu() => _navCollapsed = !_navCollapsed;

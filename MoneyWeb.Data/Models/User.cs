@@ -9,5 +9,8 @@ public class User
     public bool IsApproved { get; set; }
     public bool IsAdmin { get; set; }
     public int CashFlowHorizonMonths { get; set; } = 12;
+    public bool ShowSinkingFunds { get; set; } = true;
+    public bool ShowLoans { get; set; } = true;
+    public bool ShowFamily { get; set; } = false;
     public DateTime CreatedAt { get; set; }
 }
