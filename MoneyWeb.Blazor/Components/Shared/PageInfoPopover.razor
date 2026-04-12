@@ -1,0 +1,22 @@
+@inject IJSRuntime JS
+
+<button @ref="_btn"
+        type="button"
+        tabindex="0"
+        class="btn btn-link p-0 ms-2 text-muted page-info-btn align-middle"
+        aria-label="@Title info">
+    <i class="bi bi-info-circle"></i>
+</button>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter, EditorRequired] public string Content { get; set; } = "";
+
+    private ElementReference _btn;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+            await JS.InvokeVoidAsync("initPopover", _btn, Title, Content);
+    }
+}

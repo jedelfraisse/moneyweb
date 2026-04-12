@@ -69,3 +69,18 @@ h1:focus {
 .card.summary-card {
     border-top: 3px solid var(--bs-primary);
 }
+
+/* Page info popover trigger button */
+.page-info-btn {
+    font-size: 1rem;
+    line-height: 1;
+    vertical-align: middle;
+    opacity: 0.55;
+    text-decoration: none !important;
+}
+
+.page-info-btn:hover,
+.page-info-btn:focus {
+    opacity: 1;
+    color: var(--bs-primary) !important;
+}
