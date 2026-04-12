@@ -1,0 +1,542 @@
+@page "/family/{KidId:int}"
+@rendermode InteractiveServer
+@attribute [Authorize]
+@inject CurrentUserService CurrentUserService
+@inject IKidRepository KidRepo
+@inject NavigationManager Nav
+
+<PageTitle>@(_kid?.Name ?? "Kid") – Family – MoneyWeb</PageTitle>
+
+@if (_loading)
+{
+    <div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>
+}
+else if (_kid is null)
+{
+    <p class="text-danger">Kid not found.</p>
+}
+else
+{
+    <nav aria-label="breadcrumb" class="mb-3">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/family">Family</a></li>
+            <li class="breadcrumb-item active">@_kid.Name</li>
+        </ol>
+    </nav>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="mb-0" style="color: @(_kid.ColorHex ?? "inherit")">@_kid.Name</h1>
+            <div class="display-5 @(_balance >= 0 ? "text-success" : "text-danger")">@_balance.ToString("C")</div>
+            <small class="text-muted">current balance</small>
+        </div>
+        <div class="d-flex gap-2">
+            <button class="btn btn-success" @onclick="() => OpenTransaction(KidTransactionSource.Deposit)">+ Deposit</button>
+            <button class="btn btn-outline-warning" @onclick="() => OpenTransaction(KidTransactionSource.Withdrawal)">− Withdraw</button>
+            <button class="btn btn-outline-secondary" @onclick="EditKid">✏ Edit</button>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <!-- Chores panel -->
+        <div class="col-lg-5">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <strong>Chores</strong>
+                    <button class="btn btn-sm btn-outline-primary" @onclick="OpenAddChore">+ Add Chore</button>
+                </div>
+                <ul class="list-group list-group-flush">
+                    @if (!_chores.Any())
+                    {
+                        <li class="list-group-item text-muted small">No chores yet.</li>
+                    }
+                    @foreach (var chore in _chores.Where(c => c.IsActive))
+                    {
+                        <li class="list-group-item">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <div class="fw-semibold">@chore.Name</div>
+                                    <small class="text-muted">@chore.Frequency — @chore.RewardAmount.ToString("C")</small>
+                                </div>
+                                <div class="d-flex gap-1">
+                                    <button class="btn btn-sm btn-success" @onclick="() => OpenCompleteChore(chore)">✓ Done</button>
+                                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => OpenEditChore(chore)">✏</button>
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDeleteChore(chore)">✕</button>
+                                </div>
+                            </div>
+                        </li>
+                    }
+                    @if (_chores.Any(c => !c.IsActive))
+                    {
+                        <li class="list-group-item text-muted small fst-italic">
+                            @_chores.Count(c => !c.IsActive) inactive chore(s) hidden
+                        </li>
+                    }
+                </ul>
+            </div>
+        </div>
+
+        <!-- Transaction history -->
+        <div class="col-lg-7">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <strong>Transaction History</strong>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="ToggleSort">
+                        @(_sortDescending ? "Latest First ↓" : "Earliest First ↑")
+                    </button>
+                </div>
+                @if (!_transactions.Any())
+                {
+                    <div class="card-body text-muted small">No transactions yet.</div>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Description</th>
+                                    <th class="text-end">Amount</th>
+                                    <th class="text-end">Balance</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var row in GetDisplayRows())
+                                {
+                                    <tr>
+                                        <td class="text-nowrap">@row.Tx.TransactionDate.ToString("MM/dd/yy")</td>
+                                        <td>
+                                            @row.Tx.Description
+                                            @if (!string.IsNullOrWhiteSpace(row.Tx.ContributorName))
+                                            {
+                                                <small class="text-muted"> — @row.Tx.ContributorName</small>
+                                            }
+                                        </td>
+                                        <td class="text-end @(row.Tx.Amount >= 0 ? "text-success" : "text-danger")">
+                                            @row.Tx.Amount.ToString("C")
+                                        </td>
+                                        <td class="text-end @(row.RunningBalance >= 0 ? "text-success" : "text-danger")">
+                                            @row.RunningBalance.ToString("C")
+                                        </td>
+                                        <td class="text-end">
+                                            <button class="btn btn-sm btn-outline-danger py-0 px-1"
+                                                    @onclick="() => DeleteTransaction(row.Tx.Id)">✕</button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Deposit / Withdraw modal -->
+@if (_showTxForm)
+{
+    <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,0.5)">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@(_txSource == KidTransactionSource.Deposit ? "Deposit" : "Withdrawal")</h5>
+                    <button type="button" class="btn-close" @onclick="CloseTxForm"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Amount <span class="text-danger">*</span></label>
+                        <input type="number" step="0.01" class="form-control" @bind="_txAmount" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Description <span class="text-danger">*</span></label>
+                        <input class="form-control" @bind="_txDescription" />
+                    </div>
+                    @if (_txSource == KidTransactionSource.Deposit)
+                    {
+                        <div class="mb-3">
+                            <label class="form-label">From <span class="text-muted small">(optional)</span></label>
+                            <input class="form-control" @bind="_txContributor" placeholder="e.g. Grandma, Birthday" />
+                        </div>
+                    }
+                    <div class="mb-3">
+                        <label class="form-label">Date</label>
+                        <input type="date" class="form-control"
+                               value="@_txDate.ToString("yyyy-MM-dd")"
+                               @onchange="e => _txDate = DateOnly.Parse(e.Value!.ToString()!)" />
+                    </div>
+                    @if (!string.IsNullOrEmpty(_txError))
+                    {
+                        <div class="alert alert-danger py-2">@_txError</div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CloseTxForm">Cancel</button>
+                    <button class="btn btn-primary" @onclick="SaveTransaction">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Add/Edit Chore modal -->
+@if (_showChoreForm)
+{
+    <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,0.5)">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@(_editChore.Id == 0 ? "Add Chore" : "Edit Chore")</h5>
+                    <button type="button" class="btn-close" @onclick="CloseChoreForm"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Name <span class="text-danger">*</span></label>
+                        <input class="form-control" @bind="_editChore.Name" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Description <span class="text-muted small">(optional)</span></label>
+                        <input class="form-control" @bind="_editChore.Description" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Reward Amount <span class="text-danger">*</span></label>
+                        <div class="input-group">
+                            <span class="input-group-text">$</span>
+                            <input type="number" step="0.01" class="form-control" @bind="_editChore.RewardAmount" />
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Frequency</label>
+                        <select class="form-select" @bind="_editChore.Frequency">
+                            @foreach (var f in Enum.GetValues<ChoreFrequency>())
+                            {
+                                <option value="@f">@f</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="choreActive"
+                               checked="@_editChore.IsActive"
+                               @onchange="e => _editChore.IsActive = (bool)e.Value!" />
+                        <label class="form-check-label" for="choreActive">Active</label>
+                    </div>
+                    @if (!string.IsNullOrEmpty(_choreError))
+                    {
+                        <div class="alert alert-danger py-2 mt-3">@_choreError</div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CloseChoreForm">Cancel</button>
+                    <button class="btn btn-primary" @onclick="SaveChore">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Complete Chore modal -->
+@if (_choreToComplete is not null)
+{
+    <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,0.5)">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Complete: @_choreToComplete.Name</h5>
+                    <button type="button" class="btn-close" @onclick="() => _choreToComplete = null"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Reward Amount</label>
+                        <div class="input-group">
+                            <span class="input-group-text">$</span>
+                            <input type="number" step="0.01" class="form-control" @bind="_completeAmount" />
+                        </div>
+                        <div class="form-text">Default is the chore reward amount. Adjust if needed.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Date Completed</label>
+                        <input type="date" class="form-control"
+                               value="@_completeDate.ToString("yyyy-MM-dd")"
+                               @onchange="e => _completeDate = DateOnly.Parse(e.Value!.ToString()!)" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Notes <span class="text-muted small">(optional)</span></label>
+                        <input class="form-control" @bind="_completeNotes" />
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="() => _choreToComplete = null">Cancel</button>
+                    <button class="btn btn-success" @onclick="CompleteChore">Mark Complete + Award @_completeAmount.ToString("C")</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Delete Chore confirm -->
+@if (_choreToDelete is not null)
+{
+    <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,0.5)">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title text-danger">Delete Chore?</h5>
+                    <button type="button" class="btn-close" @onclick="() => _choreToDelete = null"></button>
+                </div>
+                <div class="modal-body">
+                    Delete <strong>@_choreToDelete.Name</strong> and its completion history?
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="() => _choreToDelete = null">Cancel</button>
+                    <button class="btn btn-danger" @onclick="DeleteChore">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Edit Kid modal -->
+@if (_showEditKid)
+{
+    <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,0.5)">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit @_editKidModel.Name</h5>
+                    <button type="button" class="btn-close" @onclick="() => _showEditKid = false"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Name <span class="text-danger">*</span></label>
+                        <input class="form-control" @bind="_editKidModel.Name" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Accent Color</label>
+                        <div class="d-flex gap-2 align-items-center">
+                            <input type="color" class="form-control form-control-color"
+                                   value="@(_editKidModel.ColorHex ?? "#4582EC")"
+                                   @oninput="e => _editKidModel.ColorHex = e.Value?.ToString()" />
+                            @if (_editKidModel.ColorHex is not null)
+                            {
+                                <button class="btn btn-sm btn-link text-muted" @onclick="() => _editKidModel.ColorHex = null">Clear</button>
+                            }
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="() => _showEditKid = false">Cancel</button>
+                    <button class="btn btn-primary" @onclick="SaveKidEdit">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public int KidId { get; set; }
+
+    private bool _loading = true;
+    private Kid? _kid;
+    private decimal _balance;
+    private List<KidTransaction> _transactions = new();
+    private List<Chore> _chores = new();
+    private bool _sortDescending = false;
+    private int _userId;
+
+    // Transaction form
+    private bool _showTxForm;
+    private KidTransactionSource _txSource;
+    private decimal _txAmount;
+    private string _txDescription = string.Empty;
+    private string? _txContributor;
+    private DateOnly _txDate = DateOnly.FromDateTime(DateTime.Today);
+    private string? _txError;
+
+    // Chore form
+    private bool _showChoreForm;
+    private Chore _editChore = new();
+    private string? _choreError;
+    private Chore? _choreToComplete;
+    private decimal _completeAmount;
+    private DateOnly _completeDate = DateOnly.FromDateTime(DateTime.Today);
+    private string? _completeNotes;
+    private Chore? _choreToDelete;
+
+    // Edit kid
+    private bool _showEditKid;
+    private Kid _editKidModel = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = await CurrentUserService.GetCurrentUserAsync();
+        _userId = user?.Id ?? 0;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _kid = await KidRepo.GetByIdAsync(KidId, _userId);
+        if (_kid is not null)
+        {
+            _transactions = (await KidRepo.GetTransactionsAsync(KidId, _userId)).ToList();
+            _chores = (await KidRepo.GetChoresForKidAsync(KidId, _userId)).ToList();
+            _balance = await KidRepo.GetBalanceAsync(KidId, _userId);
+        }
+        _loading = false;
+    }
+
+    // ── Transaction helpers ────────────────────────────────────────────────
+
+    private record DisplayRow(KidTransaction Tx, decimal RunningBalance);
+
+    private IEnumerable<DisplayRow> GetDisplayRows()
+    {
+        var sorted = _transactions.OrderBy(t => t.TransactionDate).ThenBy(t => t.Id).ToList();
+        var rows = new List<DisplayRow>();
+        decimal running = 0;
+        foreach (var t in sorted)
+        {
+            running += t.Amount;
+            rows.Add(new DisplayRow(t, running));
+        }
+        return _sortDescending ? rows.AsEnumerable().Reverse() : rows;
+    }
+
+    private void ToggleSort() => _sortDescending = !_sortDescending;
+
+    private void OpenTransaction(KidTransactionSource source)
+    {
+        _txSource = source;
+        _txAmount = 0;
+        _txDescription = source == KidTransactionSource.Deposit ? "Deposit" : "Withdrawal";
+        _txContributor = null;
+        _txDate = DateOnly.FromDateTime(DateTime.Today);
+        _txError = null;
+        _showTxForm = true;
+    }
+
+    private void CloseTxForm() { _showTxForm = false; _txError = null; }
+
+    private async Task SaveTransaction()
+    {
+        if (_txAmount <= 0)
+        {
+            _txError = "Amount must be greater than 0.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(_txDescription))
+        {
+            _txError = "Description is required.";
+            return;
+        }
+        var amount = _txSource == KidTransactionSource.Withdrawal ? -Math.Abs(_txAmount) : Math.Abs(_txAmount);
+        await KidRepo.AddTransactionAsync(new KidTransaction
+        {
+            KidId = KidId,
+            UserId = _userId,
+            TransactionDate = _txDate,
+            Amount = amount,
+            Description = _txDescription,
+            ContributorName = _txContributor,
+            Source = _txSource
+        });
+        CloseTxForm();
+        await LoadAsync();
+    }
+
+    private async Task DeleteTransaction(int id)
+    {
+        await KidRepo.DeleteTransactionAsync(id, _userId);
+        await LoadAsync();
+    }
+
+    // ── Chore helpers ──────────────────────────────────────────────────────
+
+    private void OpenAddChore()
+    {
+        _editChore = new Chore { KidId = KidId, UserId = _userId, IsActive = true, Frequency = ChoreFrequency.Weekly };
+        _choreError = null;
+        _showChoreForm = true;
+    }
+
+    private void OpenEditChore(Chore chore)
+    {
+        _editChore = new Chore
+        {
+            Id = chore.Id, KidId = chore.KidId, UserId = chore.UserId,
+            Name = chore.Name, Description = chore.Description,
+            RewardAmount = chore.RewardAmount, Frequency = chore.Frequency,
+            IsActive = chore.IsActive
+        };
+        _choreError = null;
+        _showChoreForm = true;
+    }
+
+    private void CloseChoreForm() { _showChoreForm = false; _choreError = null; }
+
+    private async Task SaveChore()
+    {
+        if (string.IsNullOrWhiteSpace(_editChore.Name)) { _choreError = "Name is required."; return; }
+        if (_editChore.RewardAmount < 0) { _choreError = "Reward amount cannot be negative."; return; }
+        _editChore.KidId = KidId;
+        _editChore.UserId = _userId;
+        if (_editChore.Id == 0) await KidRepo.CreateChoreAsync(_editChore);
+        else await KidRepo.UpdateChoreAsync(_editChore);
+        CloseChoreForm();
+        await LoadAsync();
+    }
+
+    private void OpenCompleteChore(Chore chore)
+    {
+        _choreToComplete = chore;
+        _completeAmount = chore.RewardAmount;
+        _completeDate = DateOnly.FromDateTime(DateTime.Today);
+        _completeNotes = null;
+    }
+
+    private async Task CompleteChore()
+    {
+        if (_choreToComplete is null) return;
+        await KidRepo.CompleteChoreAsync(new ChoreCompletion
+        {
+            ChoreId = _choreToComplete.Id,
+            KidId = KidId,
+            UserId = _userId,
+            CompletedDate = _completeDate,
+            Amount = _completeAmount,
+            Notes = _completeNotes
+        });
+        _choreToComplete = null;
+        await LoadAsync();
+    }
+
+    private void ConfirmDeleteChore(Chore chore) => _choreToDelete = chore;
+
+    private async Task DeleteChore()
+    {
+        if (_choreToDelete is null) return;
+        await KidRepo.DeleteChoreAsync(_choreToDelete.Id, _userId);
+        _choreToDelete = null;
+        await LoadAsync();
+    }
+
+    // ── Kid edit ──────────────────────────────────────────────────────────
+
+    private void EditKid()
+    {
+        if (_kid is null) return;
+        _editKidModel = new Kid { Id = _kid.Id, UserId = _kid.UserId, Name = _kid.Name, ColorHex = _kid.ColorHex };
+        _showEditKid = true;
+    }
+
+    private async Task SaveKidEdit()
+    {
+        if (string.IsNullOrWhiteSpace(_editKidModel.Name)) return;
+        await KidRepo.UpdateKidAsync(_editKidModel);
+        _showEditKid = false;
+        await LoadAsync();
+    }
+}

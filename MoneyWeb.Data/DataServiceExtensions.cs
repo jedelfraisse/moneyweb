@@ -26,6 +26,7 @@ public static class DataServiceExtensions
         services.AddScoped<ICashFlowRepository>(_ => new CashFlowRepository(connectionString));
         services.AddScoped<ISinkingFundRepository, SinkingFundRepository>(
             _ => new SinkingFundRepository(connectionString));
+        services.AddScoped<IKidRepository>(_ => new KidRepository(connectionString));
 
         // Services
         services.AddSingleton<DebtPayoffService>();

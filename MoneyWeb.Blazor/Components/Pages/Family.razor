@@ -1,0 +1,185 @@
+@page "/family"
+@rendermode InteractiveServer
+@attribute [Authorize]
+@inject CurrentUserService CurrentUserService
+@inject IKidRepository KidRepo
+@inject NavigationManager Nav
+
+<PageTitle>Family – MoneyWeb</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="mb-0">Family <PageInfoPopover Title="Family" Content="Track a virtual piggy bank for each child. Kids earn money by completing chores, and family members can deposit funds. Each kid's balance and transaction history is tracked here." /></h1>
+    <button class="btn btn-primary" @onclick="OpenAdd">+ Add Kid</button>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>
+}
+else if (!_kids.Any())
+{
+    <div class="alert alert-info">
+        No kids yet. Add a child to get started tracking their piggy bank.
+    </div>
+}
+else
+{
+    <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 g-3 mb-4">
+        @foreach (var kid in _kids)
+        {
+            var balance = _balances.GetValueOrDefault(kid.Id);
+            var cardBorder = string.IsNullOrWhiteSpace(kid.ColorHex) ? "var(--bs-primary)" : kid.ColorHex;
+            <div class="col">
+                <div class="card h-100" style="border-top: 4px solid @cardBorder; cursor:pointer;"
+                     @onclick="() => GoToKid(kid.Id)">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <h5 class="card-title mb-1">@kid.Name</h5>
+                            <button class="btn btn-sm btn-outline-danger ms-2"
+                                    @onclick:stopPropagation="true"
+                                    @onclick="() => ConfirmDelete(kid)">✕</button>
+                        </div>
+                        <p class="display-6 mb-0 @(balance >= 0 ? "text-success" : "text-danger")">
+                            @balance.ToString("C")
+                        </p>
+                        <small class="text-muted">current balance</small>
+                    </div>
+                    <div class="card-footer text-muted small">
+                        <a href="/family/@kid.Id" class="stretched-link text-decoration-none">View Details →</a>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@if (_showForm)
+{
+    <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,0.5)">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@(_editKid.Id == 0 ? "Add Kid" : "Edit Kid")</h5>
+                    <button type="button" class="btn-close" @onclick="CloseForm"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Name <span class="text-danger">*</span></label>
+                        <input class="form-control" @bind="_editKid.Name" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Accent Color <span class="text-muted small">(optional)</span></label>
+                        <div class="d-flex gap-2 align-items-center">
+                            <input type="color" class="form-control form-control-color"
+                                   value="@(_editKid.ColorHex ?? "#4582EC")"
+                                   @oninput="e => _editKid.ColorHex = e.Value?.ToString()" />
+                            <span class="text-muted small">Used for the kid's card border</span>
+                            @if (_editKid.ColorHex is not null)
+                            {
+                                <button class="btn btn-sm btn-link text-muted" @onclick="() => _editKid.ColorHex = null">Clear</button>
+                            }
+                        </div>
+                    </div>
+                    @if (!string.IsNullOrEmpty(_formError))
+                    {
+                        <div class="alert alert-danger py-2">@_formError</div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CloseForm">Cancel</button>
+                    <button class="btn btn-primary" @onclick="SaveKid">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_kidToDelete is not null)
+{
+    <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,0.5)">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title text-danger">Delete @_kidToDelete.Name?</h5>
+                    <button type="button" class="btn-close" @onclick="() => _kidToDelete = null"></button>
+                </div>
+                <div class="modal-body">
+                    <p>This will permanently delete <strong>@_kidToDelete.Name</strong> and all their transactions, chores, and chore history. This cannot be undone.</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="() => _kidToDelete = null">Cancel</button>
+                    <button class="btn btn-danger" @onclick="DeleteKid">Delete Everything</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _loading = true;
+    private List<Kid> _kids = new();
+    private Dictionary<int, decimal> _balances = new();
+    private bool _showForm;
+    private Kid _editKid = new();
+    private string? _formError;
+    private Kid? _kidToDelete;
+    private int _userId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = await CurrentUserService.GetCurrentUserAsync();
+        _userId = user?.Id ?? 0;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _kids = (await KidRepo.GetByUserAsync(_userId)).ToList();
+        _balances = new();
+        foreach (var kid in _kids)
+            _balances[kid.Id] = await KidRepo.GetBalanceAsync(kid.Id, _userId);
+        _loading = false;
+    }
+
+    private void OpenAdd()
+    {
+        _editKid = new Kid();
+        _formError = null;
+        _showForm = true;
+    }
+
+    private void CloseForm()
+    {
+        _showForm = false;
+        _formError = null;
+    }
+
+    private async Task SaveKid()
+    {
+        if (string.IsNullOrWhiteSpace(_editKid.Name))
+        {
+            _formError = "Name is required.";
+            return;
+        }
+        _editKid.UserId = _userId;
+        if (_editKid.Id == 0)
+            await KidRepo.CreateKidAsync(_editKid);
+        else
+            await KidRepo.UpdateKidAsync(_editKid);
+        CloseForm();
+        await LoadAsync();
+    }
+
+    private void GoToKid(int id) => Nav.NavigateTo($"/family/{id}");
+
+    private void ConfirmDelete(Kid kid) => _kidToDelete = kid;
+
+    private async Task DeleteKid()
+    {
+        if (_kidToDelete is null) return;
+        await KidRepo.DeleteKidAsync(_kidToDelete.Id, _userId);
+        _kidToDelete = null;
+        await LoadAsync();
+    }
+}
