@@ -344,6 +344,7 @@ else
                             }
                         </td>
                         <td class="text-end text-nowrap">
+                            <button class="btn btn-sm btn-outline-info me-1" @onclick="() => OpenScheduleUngrouped(debt)" title="View payment schedule">Schedule</button>
                             <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => OpenEditDebt(debt)">Edit</button>
                             <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDeleteDebt(debt)">Delete</button>
                         </td>
@@ -803,6 +804,12 @@ else
     {
         _scheduleDebt = debt;
         _scheduleRows = result.PaymentSchedule.Where(p => p.DebtId == debt.Id).ToList();
+    }
+
+    private void OpenScheduleUngrouped(Debt debt)
+    {
+        var result = PayoffSvc.Calculate([debt], debt.MinimumPayment);
+        OpenSchedule(debt, result.Avalanche);
     }
 
     // Group modal
