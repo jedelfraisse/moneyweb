@@ -9,6 +9,9 @@ public class Loan
     public string? Email { get; set; }
     public string? Phone { get; set; }
     public string? Description { get; set; }
+    /// <summary>The original amount lent — never changes after creation.</summary>
+    public decimal OriginalPrincipal { get; set; }
+    /// <summary>Running balance accumulator: OriginalPrincipal + accrued interest + additional + fees.</summary>
     public decimal Principal { get; set; }
     public decimal InterestRate { get; set; }   // stored as fraction; 0 for interest-free
     public decimal AmountRepaid { get; set; }

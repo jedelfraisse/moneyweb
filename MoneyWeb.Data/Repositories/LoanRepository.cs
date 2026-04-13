@@ -29,9 +29,9 @@ public class LoanRepository(string connectionString) : ILoanRepository
     {
         using var conn = Connect();
         var sql = """
-            INSERT INTO Loans (UserId, Borrower, Email, Phone, Description, Principal, InterestRate, AmountRepaid, LoanDate, ExpectedRepaymentDate, IsSettled, CreatedAt, UpdatedAt)
+            INSERT INTO Loans (UserId, Borrower, Email, Phone, Description, Principal, OriginalPrincipal, InterestRate, AmountRepaid, LoanDate, ExpectedRepaymentDate, IsSettled, CreatedAt, UpdatedAt)
             OUTPUT INSERTED.Id
-            VALUES (@UserId, @Borrower, @Email, @Phone, @Description, @Principal, @InterestRate, @AmountRepaid, @LoanDate, @ExpectedRepaymentDate, @IsSettled, GETUTCDATE(), GETUTCDATE())
+            VALUES (@UserId, @Borrower, @Email, @Phone, @Description, @Principal, @OriginalPrincipal, @InterestRate, @AmountRepaid, @LoanDate, @ExpectedRepaymentDate, @IsSettled, GETUTCDATE(), GETUTCDATE())
             """;
         return await conn.ExecuteScalarAsync<int>(sql, loan);
     }
@@ -42,7 +42,8 @@ public class LoanRepository(string connectionString) : ILoanRepository
         var sql = """
             UPDATE Loans SET
                 Borrower = @Borrower, Email = @Email, Phone = @Phone, Description = @Description,
-                Principal = @Principal, InterestRate = @InterestRate, AmountRepaid = @AmountRepaid,
+                Principal = @Principal, OriginalPrincipal = @OriginalPrincipal,
+                InterestRate = @InterestRate, AmountRepaid = @AmountRepaid,
                 LoanDate = @LoanDate, ExpectedRepaymentDate = @ExpectedRepaymentDate,
                 IsSettled = @IsSettled, UpdatedAt = GETUTCDATE()
             WHERE Id = @Id AND UserId = @UserId

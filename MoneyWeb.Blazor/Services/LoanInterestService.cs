@@ -36,10 +36,6 @@ public class LoanInterestService(ILoanRepository loanRepo)
 
     private async Task<int> ApplyMissingInterestAsync(Loan loan, List<LoanTransaction> existingTx, int userId)
     {
-        // Reconstruct the original principal before any Additional/Interest/Fee transactions
-        var originalPrincipal = loan.Principal
-            - existingTx.Where(t => t.Type != LoanTransactionType.Payment).Sum(t => t.Amount);
-
         var today = DateOnly.FromDateTime(DateTime.Today);
         var startMonth = new DateOnly(loan.LoanDate.Year, loan.LoanDate.Month, 1);
         var endMonth = new DateOnly(today.Year, today.Month, 1); // exclusive — don't charge current month yet
@@ -54,7 +50,7 @@ public class LoanInterestService(ILoanRepository loanRepo)
 
             if (alreadyApplied) continue;
 
-            decimal balance = ComputeBalanceAt(originalPrincipal, existingTx, month);
+            decimal balance = ComputeBalanceAt(loan.OriginalPrincipal, existingTx, month);
             if (balance <= 0) continue;
 
             decimal interest = Math.Round(balance * (loan.InterestRate / 12m), 2);

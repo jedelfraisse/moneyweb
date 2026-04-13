@@ -350,7 +350,10 @@ else
         _editLoan.UserId = _userId;
 
         if (_editLoan.Id == 0)
+        {
+            _editLoan.OriginalPrincipal = _editLoan.Principal;
             await LoanRepo.CreateAsync(_editLoan);
+        }
         else
             await LoanRepo.UpdateAsync(_editLoan);
 

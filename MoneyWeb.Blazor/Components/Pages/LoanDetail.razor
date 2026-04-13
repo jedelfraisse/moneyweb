@@ -56,8 +56,8 @@ else
 
             <div class="row g-3 text-center">
                 <div class="col-6 col-sm-3">
-                    <div class="text-muted small">Principal</div>
-                    <div class="fw-bold">@_loan.Principal.ToString("C")</div>
+                    <div class="text-muted small">Original Principal</div>
+                    <div class="fw-bold">@_loan.OriginalPrincipal.ToString("C")</div>
                 </div>
                 <div class="col-6 col-sm-3">
                     <div class="text-muted small">Balance</div>
@@ -228,7 +228,7 @@ else
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Principal <span class="text-danger">*</span></label>
-                        <input class="form-control" type="number" step="0.01" min="0" @bind="_editLoan!.Principal" />
+                        <input class="form-control" type="number" step="0.01" min="0" @bind="_editLoan!.OriginalPrincipal" />
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Interest Rate %</label>
@@ -389,6 +389,7 @@ else
             Phone = _loan.Phone,
             Description = _loan.Description,
             Principal = _loan.Principal,
+            OriginalPrincipal = _loan.OriginalPrincipal,
             InterestRate = _loan.InterestRate,
             AmountRepaid = _loan.AmountRepaid,
             LoanDate = _loan.LoanDate,
@@ -416,6 +417,10 @@ else
         _editLoan.ExpectedRepaymentDate = _editRepayDate;
         _editLoan.InterestRate = _editInterestRatePct / 100m;
 
+        // Adjust the running Principal by the delta in OriginalPrincipal
+        var principalDelta = _editLoan.OriginalPrincipal - _loan!.OriginalPrincipal;
+        _editLoan.Principal = _loan.Principal + principalDelta;
+
         await LoanRepo.UpdateAsync(_editLoan);
         _showEditModal = false;
         await LoadAsync();
@@ -423,17 +428,13 @@ else
 
     private IEnumerable<(LoanTransaction Tx, decimal RunningBalance)> GetDisplayRows()
     {
-        // Original principal = current principal minus any additions from transactions
-        var originalPrincipal = _loan!.Principal
-            - _transactions.Where(t => t.Type != LoanTransactionType.Payment).Sum(t => t.Amount);
-
         var chronological = _transactions
             .OrderBy(t => t.TransactionDate)
             .ThenBy(t => t.Id)
             .ToList();
 
         var rows = new List<(LoanTransaction, decimal)>();
-        decimal balance = originalPrincipal;
+        decimal balance = _loan!.OriginalPrincipal;
         foreach (var tx in chronological)
         {
             balance = tx.Type == LoanTransactionType.Payment
