@@ -67,8 +67,8 @@ else
                             <td class="text-muted small">@(bill.BankAccountName ?? "—")</td>
                             <td class="text-end text-nowrap">
                                 <button class="btn btn-sm btn-outline-success me-1" @onclick="() => OpenEnterActual(bill)"
-                                        title="Log this bill — enter the amount received and when you plan to pay">
-                                    📋 Log Bill
+                                        title="Add a payment for this bill">
+                                    ➕ Add Bill
                                 </button>
                                 @if (bill.BankAccountId.HasValue)
                                 {
@@ -352,7 +352,7 @@ else
     </div>
 }
 
-<!-- ── Log Bill / Record Amount Modal ──────────────────────────────── -->
+<!-- ── Add Bill / Record Amount Modal ──────────────────────────────── -->
 @if (_showActualModal)
 {
     var isManualModal = _enteringActualBill?.PaymentMethod != DebtPaymentMethod.AutoDraft;
@@ -361,7 +361,7 @@ else
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title">
-                        @(isManualModal ? "📋 Log Bill" : "Record Amount")
+                        @(isManualModal ? "➕ Add Bill" : "Record Amount")
                         — @_editingOcc?.BillName
                     </h5>
                     <button type="button" class="btn-close" @onclick="CloseActualModal"></button>
