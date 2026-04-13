@@ -501,6 +501,12 @@ else
                     <div class="mb-3">
                         <label class="form-label">Minimum Payment</label>
                         <input class="form-control" type="number" step="0.01" @bind="_editingDebt.MinimumPayment" />
+                        @if (_editingDebt.IsMinBelowInterest)
+                        {
+                            <div class="alert alert-danger mt-2 mb-0 py-2 small">
+                                ⚠️ Min payment (@_editingDebt.MinimumPayment.ToString("C")) does not cover monthly interest (@_editingDebt.MonthlyInterest.ToString("C")) — balance will keep growing!
+                            </div>
+                        }
                     </div>
                     <div class="mb-3">
                         <div class="form-check">
