@@ -547,13 +547,6 @@ else
                             }
                         </select>
                     </div>
-                    @if (!string.IsNullOrEmpty(_groupIdStr))
-                    {
-                        <div class="mb-3">
-                            <label class="form-label">Sort Order (for Custom strategy)</label>
-                            <input class="form-control" type="number" @bind="_editingDebt.GroupSortOrder" />
-                        </div>
-                    }
                     @* ── Fees section ── *@
                     <div class="mb-3">
                         <label class="form-label fw-semibold">
@@ -1135,6 +1128,15 @@ else
         _editingDebt.GroupId = int.TryParse(_groupIdStr, out var gid) ? gid : null;
         _editingDebt.BankAccountId = int.TryParse(_debtBankIdStr, out var bid) ? bid : null;
         _editingDebt.UserId = _userId;
+
+        // Auto-assign sort order for new debts
+        if (_editingDebt.Id == 0 && _editingDebt.GroupId.HasValue)
+        {
+            var groupDebts = _groups.FirstOrDefault(g => g.Id == _editingDebt.GroupId.Value)?.Debts;
+            _editingDebt.GroupSortOrder = groupDebts?.Any() == true
+                ? groupDebts.Max(d => d.GroupSortOrder) + 1
+                : 0;
+        }
 
         int savedId;
         if (_editingDebt.Id == 0)
