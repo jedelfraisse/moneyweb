@@ -10,13 +10,16 @@ public class DebtPayoffService
     public DebtPayoffResult Calculate(IEnumerable<Debt> debts, decimal monthlyBudget)
     {
         var activeDebts = debts.Where(d => d.IsActive && d.Balance > 0).ToList();
+        var anyNeverPaysOff = activeDebts.Any(d => d.IsMinBelowInterest);
 
         return new DebtPayoffResult
         {
             Avalanche    = Simulate(activeDebts, monthlyBudget, PayoffStrategy.Avalanche),
             Snowball     = Simulate(activeDebts, monthlyBudget, PayoffStrategy.Snowball),
             Custom       = Simulate(activeDebts, monthlyBudget, PayoffStrategy.Custom),
-            MinimumOnly  = Simulate(activeDebts, monthlyBudget, PayoffStrategy.MinimumOnly)
+            MinimumOnly  = anyNeverPaysOff
+                ? new StrategyResult { NeverPaysOff = true }
+                : Simulate(activeDebts, monthlyBudget, PayoffStrategy.MinimumOnly)
         };
     }
 
@@ -190,4 +193,6 @@ public class StrategyResult
     public Dictionary<int, decimal> NextPaymentAmounts { get; init; } = [];
     /// <summary>Month-by-month payment schedule (capped at 60 months) for generating projected cash flow transactions.</summary>
     public List<ScheduledPayment> PaymentSchedule { get; init; } = [];
+    /// <summary>True when at least one debt's minimum payment does not cover its monthly interest — balance grows forever.</summary>
+    public bool NeverPaysOff { get; init; }
 }
