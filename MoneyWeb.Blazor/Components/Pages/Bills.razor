@@ -36,7 +36,7 @@ else
     var today0 = DateOnly.FromDateTime(DateTime.Today);
     Func<Bill, object> billSortKey = _billSort == "name"
         ? (b => (object)b.Name)
-        : (b => (object)b.NextDueDate((b.LastOccurrenceDueDate ?? today0.AddDays(-1)).AddDays(1)));
+        : (b => (object)b.NextDueDate(b.NextFromAfterLastOccurrence(b.LastOccurrenceDueDate, today0)));
     var manualBills    = _bills.Where(b => b.PaymentMethod != DebtPaymentMethod.AutoDraft).OrderBy(billSortKey).ToList();
     var autoDraftBills = _bills.Where(b => b.PaymentMethod == DebtPaymentMethod.AutoDraft).OrderBy(billSortKey).ToList();
     var openManual     = _openOccurrences.Where(o => o.IsOneOff || _bills.Any(b => b.Id == o.BillId && b.PaymentMethod != DebtPaymentMethod.AutoDraft)).ToList();
@@ -60,7 +60,7 @@ else
                     @foreach (var bill in manualBills)
                     {
                         var today   = DateOnly.FromDateTime(DateTime.Today);
-                        var nextDue = bill.NextDueDate((bill.LastOccurrenceDueDate ?? today.AddDays(-1)).AddDays(1));
+                        var nextDue = bill.NextDueDate(bill.NextFromAfterLastOccurrence(bill.LastOccurrenceDueDate, today));
                         var dueSoon = nextDue <= today.AddDays(14);
                         <tr class="@(!bill.IsActive ? "text-muted" : "")">
                             <td class="text-center" style="width:28px">
@@ -231,7 +231,7 @@ else
                     @foreach (var bill in autoDraftBills)
                     {
                         var today   = DateOnly.FromDateTime(DateTime.Today);
-                        var nextDue = bill.NextDueDate((bill.LastOccurrenceDueDate ?? today.AddDays(-1)).AddDays(1));
+                        var nextDue = bill.NextDueDate(bill.NextFromAfterLastOccurrence(bill.LastOccurrenceDueDate, today));
                         var dueSoon = nextDue <= today.AddDays(14);
                         <tr class="@(!bill.IsActive ? "text-muted" : "")">
                             <td class="text-center" style="width:28px">
@@ -631,7 +631,7 @@ else
         _bankIdStr = bill.BankAccountId?.ToString() ?? string.Empty;
         _annualMonthStr = bill.AnnualMonth?.ToString() ?? string.Empty;
         var today = DateOnly.FromDateTime(DateTime.Today);
-        var nextDue = bill.NextDueDate((bill.LastOccurrenceDueDate ?? today.AddDays(-1)).AddDays(1));
+        var nextDue = bill.NextDueDate(bill.NextFromAfterLastOccurrence(bill.LastOccurrenceDueDate, today));
         _nextDueDate = nextDue;
         _modalError = null;
         _showModal = true;
@@ -694,7 +694,7 @@ else
     private void OpenEnterActual(Bill bill)
     {
         var today = DateOnly.FromDateTime(DateTime.Today);
-        var nextDue = bill.NextDueDate((bill.LastOccurrenceDueDate ?? today.AddDays(-1)).AddDays(1));
+        var nextDue = bill.NextDueDate(bill.NextFromAfterLastOccurrence(bill.LastOccurrenceDueDate, today));
         _editingOcc = new BillOccurrence
         {
             BillId = bill.Id,
@@ -823,7 +823,7 @@ else
         // Auto-push the next occurrence to the cash flow if the bill has a bank account and it isn't there yet
         if (isNewOccurrence && _enteringActualBill is { BankAccountId: not null } pushedBill)
         {
-            var nextDue = pushedBill.NextDueDate(_occDueDate.AddDays(1));
+            var nextDue = pushedBill.NextDueDate(pushedBill.NextFromAfterOccurrence(_occDueDate));
             var alreadyExists = await CashFlowRepo.HasProjectedForSourceOnDateAsync(pushedBill.Id, user.Id, TransactionCategory.Bill, nextDue);
             if (!alreadyExists)
             {
@@ -911,9 +911,7 @@ else
         await CashFlowRepo.DeleteProjectedForSourceAsync(bill.Id, user.Id, TransactionCategory.Bill);
 
         // Start projections from after the last recorded occurrence so we don't recreate entries the user has already paid
-        var startFrom = bill.LastOccurrenceDueDate.HasValue
-            ? bill.LastOccurrenceDueDate.Value.AddDays(1)
-            : today;
+        var startFrom = bill.NextFromAfterLastOccurrence(bill.LastOccurrenceDueDate, today);
         if (startFrom < today) startFrom = today;
 
         var dates = ProjectionSvc.GetOccurrenceDates(bill, startFrom, horizon);

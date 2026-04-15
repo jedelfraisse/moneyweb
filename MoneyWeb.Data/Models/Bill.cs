@@ -36,6 +36,26 @@ public class Bill
         };
     }
 
+    /// <summary>
+    /// Returns the "from" date to use when projecting the NEXT occurrence after one has been recorded.
+    /// If the canonical scheduled occurrence falls within 1 day of lastDueDate (meaning the user just
+    /// handled that period's bill), we advance past it so projections don't repeat the same period.
+    /// Example: monthly-on-15 bill, user enters April 14 → canonical = April 15 → returns April 16 → next = May 15.
+    /// </summary>
+    public DateOnly NextFromAfterOccurrence(DateOnly occurrenceDueDate)
+    {
+        var canonical = NextDueDate(occurrenceDueDate);
+        return canonical <= occurrenceDueDate.AddDays(1)
+            ? canonical.AddDays(1)
+            : occurrenceDueDate.AddDays(1);
+    }
+
+    /// <summary>Convenience overload that handles the null (no occurrences recorded) case.</summary>
+    public DateOnly NextFromAfterLastOccurrence(DateOnly? lastOccurrenceDueDate, DateOnly today)
+        => lastOccurrenceDueDate.HasValue
+            ? NextFromAfterOccurrence(lastOccurrenceDueDate.Value)
+            : today;
+
     private static DateOnly NextMonthlyDate(DateOnly from, int day)
     {
         var candidate = new DateOnly(from.Year, from.Month, Math.Min(day, DateTime.DaysInMonth(from.Year, from.Month)));
