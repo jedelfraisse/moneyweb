@@ -6,6 +6,8 @@
 @inject IDebtRepository DebtRepository
 @inject IBillRepository BillRepository
 @inject ILoanRepository LoanRepository
+@inject IIncomeRepository IncomeRepository
+@inject ISinkingFundRepository SinkingFundRepository
 
 <PageTitle>MoneyWeb</PageTitle>
 
@@ -49,23 +51,68 @@ else if (!_currentUser.IsApproved)
 else
 {
     @* Approved user – show dashboard summary *@
-    <h2>Dashboard</h2>
+    <h2 class="mb-3">Dashboard</h2>
 
-    <div class="row g-3 mb-4">
+    @* ── Budget summary row ── *@
+    var net = _monthlyIncome - _monthlyExpenses;
+    var netPositive = net >= 0;
+    <div class="row g-3 mb-2">
         <div class="col-sm-6 col-lg-3">
-            <div class="card h-100">
+            <div class="card h-100 border-success">
                 <div class="card-body">
-                    <h6 class="card-subtitle mb-1 text-muted">Active Debts</h6>
-                    <p class="card-text fs-4">@_debtCount</p>
-                    <p class="card-text text-muted small">Total balance: @_totalDebtBalance.ToString("C")</p>
+                    <h6 class="card-subtitle mb-1 text-muted">Monthly Income</h6>
+                    <p class="card-text fs-4 text-success fw-bold">@_monthlyIncome.ToString("C")</p>
+                    <p class="card-text text-muted small">@_incomeSourceCount active source(s)</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <div class="card h-100 border-danger">
+                <div class="card-body">
+                    <h6 class="card-subtitle mb-1 text-muted">Monthly Expenses</h6>
+                    <p class="card-text fs-4 text-danger fw-bold">@_monthlyExpenses.ToString("C")</p>
+                    <p class="card-text text-muted small">Debts + bills + sinking funds</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <div class="card h-100 @(netPositive ? "border-success" : "border-warning")">
+                <div class="card-body">
+                    <h6 class="card-subtitle mb-1 text-muted">Net Monthly Cash Flow</h6>
+                    <p class="card-text fs-4 fw-bold @(netPositive ? "text-success" : "text-warning")">
+                        @(netPositive ? "+" : "")@net.ToString("C")
+                    </p>
+                    <p class="card-text small">
+                        @if (netPositive)
+                        {
+                            <span class="text-success">✅ You're on track</span>
+                        }
+                        else
+                        {
+                            <span class="text-warning">⚠️ Expenses exceed income</span>
+                        }
+                    </p>
                 </div>
             </div>
         </div>
         <div class="col-sm-6 col-lg-3">
             <div class="card h-100">
                 <div class="card-body">
+                    <h6 class="card-subtitle mb-1 text-muted">Total Debt Balance</h6>
+                    <p class="card-text fs-4">@_totalDebtBalance.ToString("C")</p>
+                    <p class="card-text text-muted small">@_debtCount active debt(s)</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ── Secondary info row ── *@
+    <div class="row g-3 mb-4">
+        <div class="col-sm-6 col-lg-3">
+            <div class="card h-100">
+                <div class="card-body">
                     <h6 class="card-subtitle mb-1 text-muted">Monthly Debt Payments</h6>
-                    <p class="card-text fs-4">@_totalMinPayments.ToString("C")</p>
+                    <p class="card-text fs-5">@_totalMinPayments.ToString("C")</p>
                     <p class="card-text text-muted small">Sum of minimum payments</p>
                 </div>
             </div>
@@ -74,7 +121,7 @@ else
             <div class="card h-100">
                 <div class="card-body">
                     <h6 class="card-subtitle mb-1 text-muted">Monthly Bills</h6>
-                    <p class="card-text fs-4">@_monthlyBillTotal.ToString("C")</p>
+                    <p class="card-text fs-5">@_monthlyBillTotal.ToString("C")</p>
                     <p class="card-text text-muted small">@_billCount active bill(s)</p>
                 </div>
             </div>
@@ -82,17 +129,22 @@ else
         <div class="col-sm-6 col-lg-3">
             <div class="card h-100">
                 <div class="card-body">
+                    <h6 class="card-subtitle mb-1 text-muted">Monthly Sinking Funds</h6>
+                    <p class="card-text fs-5">@_monthlySinkingTotal.ToString("C")</p>
+                    <p class="card-text text-muted small">@_sinkingFundCount active fund(s)</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <div class="card h-100">
+                <div class="card-body">
                     <h6 class="card-subtitle mb-1 text-muted">Outstanding Loans</h6>
-                    <p class="card-text fs-4">@_outstandingLoanBalance.ToString("C")</p>
+                    <p class="card-text fs-5">@_outstandingLoanBalance.ToString("C")</p>
                     <p class="card-text text-muted small">@_unsettledLoanCount unsettled loan(s)</p>
                 </div>
             </div>
         </div>
     </div>
-
-    <p class="text-muted small">
-        Total monthly obligations: <strong>@((_totalMinPayments + _monthlyBillTotal).ToString("C"))</strong>
-    </p>
 }
 
 @code {
@@ -108,9 +160,20 @@ else
     private int _billCount;
     private decimal _monthlyBillTotal;
 
+    // Income summary
+    private int _incomeSourceCount;
+    private decimal _monthlyIncome;
+
+    // Sinking fund summary
+    private int _sinkingFundCount;
+    private decimal _monthlySinkingTotal;
+
     // Loan summary
     private int _unsettledLoanCount;
     private decimal _outstandingLoanBalance;
+
+    // Budget totals
+    private decimal _monthlyExpenses => _totalMinPayments + _monthlyBillTotal + _monthlySinkingTotal;
 
     protected override async Task OnInitializedAsync()
     {
@@ -132,6 +195,21 @@ else
                 BillFrequency.Annual     => b.Amount / 12m,
                 _                        => b.Amount
             });
+
+            var incomes = (await IncomeRepository.GetAllAsync(_currentUser.Id, activeOnly: true)).ToList();
+            _incomeSourceCount = incomes.Count;
+            _monthlyIncome = incomes.Sum(i => i.Frequency switch
+            {
+                IncomeFrequency.Weekly      => i.EstimatedAmount * 52m / 12m,
+                IncomeFrequency.BiWeekly    => i.EstimatedAmount * 26m / 12m,
+                IncomeFrequency.SemiMonthly => i.EstimatedAmount * 2m,
+                IncomeFrequency.Monthly     => i.EstimatedAmount,
+                _                           => i.EstimatedAmount
+            });
+
+            var funds = (await SinkingFundRepository.GetAllAsync(_currentUser.Id, activeOnly: true)).ToList();
+            _sinkingFundCount = funds.Count;
+            _monthlySinkingTotal = funds.Sum(f => f.EffectiveMonthlyContribution);
 
             var loans = (await LoanRepository.GetAllAsync(_currentUser.Id, unsettledOnly: true)).ToList();
             _unsettledLoanCount = loans.Count;

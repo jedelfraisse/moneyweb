@@ -85,9 +85,8 @@ else
                         @foreach (var row in month.Rows)
                         {
                             var t = row.Transaction;
-                            var rowClass = (!t.IsProjected) ? "" :
-                                          t.IsSubmitted ? "table-info" :
-                                          t.IsManualOverride ? "table-warning" : "";
+                            var rowClass = t.IsSubmitted ? "table-info" :
+                                           t.IsManualOverride ? "table-warning" : "";
                             <tr class="@rowClass">
                                 <td class="text-nowrap">
                                     @t.TransactionDate.ToString("MMM d, yyyy")
@@ -95,16 +94,16 @@ else
                                 <td>@t.Description</td>
                                 <td class="text-end fw-semibold @(t.Amount >= 0 ? "text-success" : "text-danger")">
                                     @t.Amount.ToString("C")
+                                    @if (t.IsProjected && t.Category == TransactionCategory.Bill)
+                                    {
+                                        <span class="ms-1 text-muted small" title="Estimated amount — actual may differ">≈</span>
+                                    }
                                 </td>
                                 <td class="text-end @(row.RunningBalance < 0 ? "text-danger fw-bold" : "")">
                                     @row.RunningBalance.ToString("C")
                                 </td>
                                 <td class="text-center">
-                                    @if (!t.IsProjected)
-                                    {
-                                        <span class="badge bg-success">✅ Confirmed</span>
-                                    }
-                                    else if (t.TransactionDate < DateOnly.FromDateTime(DateTime.Today))
+                                    @if (t.TransactionDate < DateOnly.FromDateTime(DateTime.Today))
                                     {
                                         <span class="badge bg-danger" title="Projected date has passed — confirm or skip">⚠️ Overdue</span>
                                     }
@@ -341,7 +340,7 @@ else
 
     private async Task MarkProcessed(CashFlowTransaction t)
     {
-        await CashFlowRepo.MarkAsProcessedAsync(t.Id, _userId);
+        await CashFlowRepo.DeleteAsync(t.Id, _userId);
         await LoadAsync();
     }
 

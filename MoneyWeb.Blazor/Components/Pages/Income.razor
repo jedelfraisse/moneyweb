@@ -355,7 +355,7 @@ else
                 UserId = _userId,
                 BankAccountId = income.BankAccountId!.Value,
                 TransactionDate = date,
-                Description = income.Name,
+                Description = $"Income: {income.Name}",
                 Amount = income.EstimatedAmount,   // positive = inflow
                 Category = TransactionCategory.Income,
                 ReferenceId = income.Id,

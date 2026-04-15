@@ -1007,8 +1007,8 @@ else
                 BankAccountId = effectiveBanks[p.DebtId]!.Value,
                 TransactionDate = p.Date,
                 Description = p.FeesAmount > 0
-                    ? $"{p.DebtName} payment (incl. {p.FeesAmount.ToString("C")} fees)"
-                    : $"{p.DebtName} payment",
+                    ? $"Debt Payment: {p.DebtName} (+ {p.FeesAmount.ToString("C")} fees)"
+                    : $"Debt Payment: {p.DebtName}",
                 Amount = -(p.Amount + p.FeesAmount),
                 Category = TransactionCategory.DebtPayment,
                 ReferenceId = p.DebtId,
@@ -1042,8 +1042,8 @@ else
             BankAccountId = debt.BankAccountId!.Value,
             TransactionDate = p.Date,
             Description = p.FeesAmount > 0
-                ? $"{p.DebtName} payment (incl. {p.FeesAmount.ToString("C")} fees)"
-                : $"{p.DebtName} payment",
+                ? $"Debt Payment: {p.DebtName} (+ {p.FeesAmount.ToString("C")} fees)"
+                : $"Debt Payment: {p.DebtName}",
             Amount = -(p.Amount + p.FeesAmount),
             Category = TransactionCategory.DebtPayment,
             ReferenceId = p.DebtId,

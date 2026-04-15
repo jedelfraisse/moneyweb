@@ -685,7 +685,7 @@ else
             UserId = user.Id,
             BankAccountId = bill.BankAccountId!.Value,
             TransactionDate = d,
-            Description = bill.Name,
+            Description = $"Bill: {bill.Name}",
             Amount = -(bill.Amount),
             Category = TransactionCategory.Bill,
             ReferenceId = bill.Id,
