@@ -4,6 +4,7 @@
 @inject CurrentUserService CurrentUserService
 @inject IKidRepository KidRepo
 @inject NavigationManager Nav
+@inject SqidsEncoder<int> Sqids
 
 <PageTitle>Family – MoneyWeb</PageTitle>
 
@@ -45,7 +46,7 @@ else
                         <small class="text-muted">current balance</small>
                     </div>
                     <div class="card-footer text-muted small">
-                        <a href="/family/@kid.Id" class="stretched-link text-decoration-none">View Details →</a>
+                        <a href="/family/@Sqids.Encode(kid.Id)" class="stretched-link text-decoration-none">View Details →</a>
                     </div>
                 </div>
             </div>
@@ -171,7 +172,7 @@ else
         await LoadAsync();
     }
 
-    private void GoToKid(int id) => Nav.NavigateTo($"/family/{id}");
+    private void GoToKid(int id) => Nav.NavigateTo($"/family/{Sqids.Encode(id)}");
 
     private void ConfirmDelete(Kid kid) => _kidToDelete = kid;
 

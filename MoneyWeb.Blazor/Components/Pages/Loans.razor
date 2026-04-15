@@ -7,6 +7,7 @@
 @inject CurrentUserService CurrentUserService
 @inject ILoanRepository LoanRepo
 @inject NavigationManager Nav
+@inject SqidsEncoder<int> Sqids
 
 <PageTitle>Loans – MoneyWeb</PageTitle>
 
@@ -84,7 +85,7 @@ else
                             <td>@loan.LoanDate.ToString("MMM d, yyyy")</td>
                             <td>@(loan.ExpectedRepaymentDate?.ToString("MMM d, yyyy") ?? "—")</td>
                             <td class="text-end text-nowrap">
-                                <a class="btn btn-sm btn-outline-primary me-1" href="/loans/@loan.Id">View</a>
+                                <a class="btn btn-sm btn-outline-primary me-1" href="/loans/@Sqids.Encode(loan.Id)">View</a>
                                 <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => OpenEdit(loan)">Edit</button>
                                 <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(loan)">Delete</button>
                             </td>
@@ -128,7 +129,7 @@ else
                                     <td>@loan.LoanDate.ToString("MMM d, yyyy")</td>
                                     <td>@(loan.ExpectedRepaymentDate?.ToString("MMM d, yyyy") ?? "—")</td>
                                     <td class="text-end text-nowrap">
-                                        <a class="btn btn-sm btn-outline-primary me-1" href="/loans/@loan.Id">View</a>
+                                        <a class="btn btn-sm btn-outline-primary me-1" href="/loans/@Sqids.Encode(loan.Id)">View</a>
                                         <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => OpenEdit(loan)">Edit</button>
                                         <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(loan)">Delete</button>
                                     </td>

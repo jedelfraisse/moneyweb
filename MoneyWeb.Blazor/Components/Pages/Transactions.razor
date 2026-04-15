@@ -1,4 +1,4 @@
-@page "/transactions/{BankAccountId:int}"
+@page "/transactions/{BankAccountId}"
 @rendermode InteractiveServer
 @using MoneyWeb.Blazor.Services
 @using MoneyWeb.Data.Models
@@ -8,6 +8,7 @@
 @inject IBankAccountRepository AccountRepo
 @inject ICashFlowRepository CashFlowRepo
 @inject NavigationManager Nav
+@inject SqidsEncoder<int> Sqids
 
 <PageTitle>Cash Flow – MoneyWeb</PageTitle>
 
@@ -243,8 +244,9 @@ else
 }
 
 @code {
-    [Parameter] public int BankAccountId { get; set; }
+    [Parameter] public string BankAccountId { get; set; } = "";
 
+    private int _bankAccountId;
     private bool _loading = true;
     private int _userId;
     private BankAccount? _account;
@@ -273,12 +275,13 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        _bankAccountId = Sqids.Decode(BankAccountId).FirstOrDefault();
         var user = await CurrentUserService.GetCurrentUserAsync();
         if (user?.IsApproved != true) { Nav.NavigateTo("/"); return; }
         _userId = user.Id;
 
         var accounts = await AccountRepo.GetAllAsync(_userId);
-        _account = accounts.FirstOrDefault(a => a.Id == BankAccountId);
+        _account = accounts.FirstOrDefault(a => a.Id == _bankAccountId);
         if (_account is null) { _loading = false; return; }
 
         await LoadAsync();
@@ -290,7 +293,7 @@ else
         var today = DateOnly.FromDateTime(DateTime.Today);
         var from = new DateOnly(today.Year, today.Month, 1);
         var to = today.AddMonths(60);
-        var raw = (await CashFlowRepo.GetForAccountAsync(BankAccountId, _userId, from, to))
+        var raw = (await CashFlowRepo.GetForAccountAsync(_bankAccountId, _userId, from, to))
             .OrderBy(t => t.TransactionDate).ThenBy(t => t.Id)
             .ToList();
 
@@ -382,7 +385,7 @@ else
         var t = new CashFlowTransaction
         {
             UserId = _userId,
-            BankAccountId = BankAccountId,
+            BankAccountId = _bankAccountId,
             TransactionDate = _newDate,
             Description = _newDesc.Trim(),
             Amount = _newIsDeposit ? _newAmount : -_newAmount,

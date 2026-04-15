@@ -1,9 +1,10 @@
-@page "/family/{KidId:int}"
+@page "/family/{KidId}"
 @rendermode InteractiveServer
 @attribute [Authorize]
 @inject CurrentUserService CurrentUserService
 @inject IKidRepository KidRepo
 @inject NavigationManager Nav
+@inject SqidsEncoder<int> Sqids
 
 <PageTitle>@(_kid?.Name ?? "Kid") – Family – MoneyWeb</PageTitle>
 
@@ -335,8 +336,9 @@ else
 }
 
 @code {
-    [Parameter] public int KidId { get; set; }
+    [Parameter] public string KidId { get; set; } = "";
 
+    private int _kidId;
     private bool _loading = true;
     private Kid? _kid;
     private decimal _balance;
@@ -370,6 +372,7 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        _kidId = Sqids.Decode(KidId).FirstOrDefault();
         var user = await CurrentUserService.GetCurrentUserAsync();
         _userId = user?.Id ?? 0;
         await LoadAsync();
@@ -378,12 +381,12 @@ else
     private async Task LoadAsync()
     {
         _loading = true;
-        _kid = await KidRepo.GetByIdAsync(KidId, _userId);
+        _kid = await KidRepo.GetByIdAsync(_kidId, _userId);
         if (_kid is not null)
         {
-            _transactions = (await KidRepo.GetTransactionsAsync(KidId, _userId)).ToList();
-            _chores = (await KidRepo.GetChoresForKidAsync(KidId, _userId)).ToList();
-            _balance = await KidRepo.GetBalanceAsync(KidId, _userId);
+            _transactions = (await KidRepo.GetTransactionsAsync(_kidId, _userId)).ToList();
+            _chores = (await KidRepo.GetChoresForKidAsync(_kidId, _userId)).ToList();
+            _balance = await KidRepo.GetBalanceAsync(_kidId, _userId);
         }
         _loading = false;
     }
@@ -435,7 +438,7 @@ else
         var amount = _txSource == KidTransactionSource.Withdrawal ? -Math.Abs(_txAmount) : Math.Abs(_txAmount);
         await KidRepo.AddTransactionAsync(new KidTransaction
         {
-            KidId = KidId,
+            KidId = _kidId,
             UserId = _userId,
             TransactionDate = _txDate,
             Amount = amount,
@@ -457,7 +460,7 @@ else
 
     private void OpenAddChore()
     {
-        _editChore = new Chore { KidId = KidId, UserId = _userId, IsActive = true, Frequency = ChoreFrequency.Weekly };
+        _editChore = new Chore { KidId = _kidId, UserId = _userId, IsActive = true, Frequency = ChoreFrequency.Weekly };
         _choreError = null;
         _showChoreForm = true;
     }
@@ -481,7 +484,7 @@ else
     {
         if (string.IsNullOrWhiteSpace(_editChore.Name)) { _choreError = "Name is required."; return; }
         if (_editChore.RewardAmount < 0) { _choreError = "Reward amount cannot be negative."; return; }
-        _editChore.KidId = KidId;
+        _editChore.KidId = _kidId;
         _editChore.UserId = _userId;
         if (_editChore.Id == 0) await KidRepo.CreateChoreAsync(_editChore);
         else await KidRepo.UpdateChoreAsync(_editChore);
@@ -503,7 +506,7 @@ else
         await KidRepo.CompleteChoreAsync(new ChoreCompletion
         {
             ChoreId = _choreToComplete.Id,
-            KidId = KidId,
+            KidId = _kidId,
             UserId = _userId,
             CompletedDate = _completeDate,
             Amount = _completeAmount,

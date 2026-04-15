@@ -10,6 +10,7 @@
 @inject IBankAccountRepository AccountRepo
 @inject ICashFlowRepository CashFlowRepo
 @inject BillProjectionService ProjectionSvc
+@inject SqidsEncoder<int> Sqids
 
 <PageTitle>Bills – MoneyWeb</PageTitle>
 
@@ -73,7 +74,7 @@ else
                                 @if (bill.BankAccountId.HasValue)
                                 {
                                     <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => PushToCalendarAsync(bill)">Push ↗</button>
-                                    <a class="btn btn-sm btn-link p-0 me-1 text-muted" href="/transactions/@bill.BankAccountId">View →</a>
+                                    <a class="btn btn-sm btn-link p-0 me-1 text-muted" href="/transactions/@Sqids.Encode(bill.BankAccountId!.Value)">View →</a>
                                 }
                                 <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => OpenEditBill(bill)">Edit</button>
                                 <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(bill)">Delete</button>
@@ -183,7 +184,7 @@ else
                                 @if (bill.BankAccountId.HasValue)
                                 {
                                     <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => PushToCalendarAsync(bill)">Push ↗</button>
-                                    <a class="btn btn-sm btn-link p-0 me-1 text-muted" href="/transactions/@bill.BankAccountId">View →</a>
+                                    <a class="btn btn-sm btn-link p-0 me-1 text-muted" href="/transactions/@Sqids.Encode(bill.BankAccountId!.Value)">View →</a>
                                 }
                                 <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => OpenEditBill(bill)">Edit</button>
                                 <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(bill)">Delete</button>

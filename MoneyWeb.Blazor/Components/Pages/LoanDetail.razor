@@ -1,4 +1,4 @@
-@page "/loans/{LoanId:int}"
+@page "/loans/{LoanId}"
 @rendermode InteractiveServer
 @using MoneyWeb.Blazor.Services
 @using MoneyWeb.Data.Models
@@ -8,6 +8,7 @@
 @inject ILoanRepository LoanRepo
 @inject NavigationManager Nav
 @inject LoanInterestService InterestService
+@inject SqidsEncoder<int> Sqids
 
 <PageTitle>Loan Detail – MoneyWeb</PageTitle>
 
@@ -257,8 +258,9 @@ else
 }
 
 @code {
-    [Parameter] public int LoanId { get; set; }
+    [Parameter] public string LoanId { get; set; } = "";
 
+    private int _loanId;
     private bool _loading = true;
     private Loan? _loan;
     private List<LoanTransaction> _transactions = [];
@@ -284,6 +286,7 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        _loanId = Sqids.Decode(LoanId).FirstOrDefault();
         var user = await CurrentUserService.GetCurrentUserAsync();
         _userId = user!.Id;
         await LoadAsync();
@@ -292,9 +295,9 @@ else
     private async Task LoadAsync()
     {
         _loading = true;
-        _loan = await LoanRepo.GetByIdAsync(LoanId, _userId);
+        _loan = await LoanRepo.GetByIdAsync(_loanId, _userId);
         if (_loan is not null)
-            _transactions = (await LoanRepo.GetTransactionsAsync(LoanId, _userId)).ToList();
+            _transactions = (await LoanRepo.GetTransactionsAsync(_loanId, _userId)).ToList();
         _loading = false;
     }
 

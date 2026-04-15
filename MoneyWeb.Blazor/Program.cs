@@ -3,6 +3,7 @@ using Microsoft.Identity.Web;
 using MoneyWeb.Data;
 using MoneyWeb.Blazor.Components;
 using MoneyWeb.Blazor.Services;
+using Sqids;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -31,6 +32,15 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<CurrentUserService>();
 builder.Services.AddScoped<LoanInterestService>();
 builder.Services.AddHostedService<InterestAccrualBackgroundService>();
+
+// Sqids — obfuscates sequential integer IDs in URLs
+builder.Services.AddSingleton(new SqidsEncoder<int>(new SqidsOptions
+{
+    Alphabet = builder.Configuration["Sqids:Alphabet"]
+        ?? "kLpQ7mR3nXv8wfYaZbTuGcHjEd2Oi9NgCeM6hAoB5sItJ1KDy4PUz0VlFrxWSq",
+    MinLength = int.TryParse(builder.Configuration["Sqids:MinLength"], out var sqidsMinLen)
+        ? sqidsMinLen : 5
+}));
 
 // Add services to the container.
 builder.Services.AddRazorComponents()

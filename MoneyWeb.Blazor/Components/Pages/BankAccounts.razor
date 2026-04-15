@@ -6,6 +6,7 @@
 @attribute [Authorize]
 @inject CurrentUserService CurrentUserService
 @inject IBankAccountRepository AccountRepo
+@inject SqidsEncoder<int> Sqids
 
 <PageTitle>Bank Accounts – MoneyWeb</PageTitle>
 
@@ -43,7 +44,7 @@ else
                     <td class="text-end">@acct.CurrentBalance.ToString("C")</td>
                     <td class="text-muted small">@acct.Notes</td>
                     <td class="text-end text-nowrap">
-                        <a class="btn btn-sm btn-outline-primary me-1" href="/transactions/@acct.Id">Cash Flow</a>
+                        <a class="btn btn-sm btn-outline-primary me-1" href="/transactions/@Sqids.Encode(acct.Id)">Cash Flow</a>
                         <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => OpenEdit(acct)">Edit</button>
                         <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(acct)">Delete</button>
                     </td>

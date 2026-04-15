@@ -9,6 +9,7 @@
 @inject IIncomeRepository IncomeRepo
 @inject IBankAccountRepository AccountRepo
 @inject ICashFlowRepository CashFlowRepo
+@inject SqidsEncoder<int> Sqids
 
 <PageTitle>Income – MoneyWeb</PageTitle>
 
@@ -69,7 +70,7 @@ else
                         @if (income.BankAccountId.HasValue)
                         {
                             <button class="btn btn-sm btn-outline-success me-1" @onclick="() => PushIncomeProjections(income)" title="Push projected income to Cash Flow">Push to Cash Flow</button>
-                            <a class="btn btn-sm btn-link p-0 me-1 text-muted" href="/transactions/@income.BankAccountId">View →</a>
+                            <a class="btn btn-sm btn-link p-0 me-1 text-muted" href="/transactions/@Sqids.Encode(income.BankAccountId!.Value)">View →</a>
                         }
                         <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => OpenEditIncome(income)">Edit</button>
                         <button class="btn btn-sm btn-outline-danger" @onclick="() => _deleteTarget = income">Delete</button>
