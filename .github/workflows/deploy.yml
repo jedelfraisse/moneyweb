@@ -40,7 +40,8 @@ jobs:
         run: |
           python3 - << 'PYEOF'
           import ftplib, io, os
-          content = b'<html><body><h1>Site is updating, please check back shortly.</h1></body></html>'
+          with open('./publish/_app_offline.htm', 'rb') as f:
+              content = f.read()
           server = os.environ['FTP_SERVER'].strip()
           if '://' in server:
               server = server.split('://', 1)[1]
