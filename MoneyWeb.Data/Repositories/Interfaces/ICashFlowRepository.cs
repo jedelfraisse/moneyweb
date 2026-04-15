@@ -57,4 +57,7 @@ public interface ICashFlowRepository
 
     /// <summary>Delete all manual-override projected transactions for a source on a specific date (e.g. when deleting a recorded bill occurrence).</summary>
     Task DeleteManualProjectedOnDateAsync(int referenceId, int userId, TransactionCategory category, DateOnly date);
+
+    /// <summary>Mark a bill occurrence's CF transaction as submitted, matched by source+date rather than by ID.</summary>
+    Task MarkSubmittedForSourceOnDateAsync(int referenceId, int userId, TransactionCategory category, DateOnly date, DateOnly submittedDate);
 }

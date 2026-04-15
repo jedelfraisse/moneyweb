@@ -155,4 +155,16 @@ public class BillRepository(string connectionString) : IBillRepository
             """,
             new { BillId = billId, UserId = userId, PayDate = payDate });
     }
+
+    public async Task UpdateOccurrenceStatusByBillAndPayDateAsync(int billId, int userId, DateOnly payDate, BillOccurrenceStatus status, DateOnly? submittedDate)
+    {
+        using var conn = Connect();
+        await conn.ExecuteAsync(
+            """
+            UPDATE BillOccurrences SET Status = @Status, SubmittedDate = @SubmittedDate, UpdatedAt = GETUTCDATE()
+            WHERE BillId = @BillId AND UserId = @UserId
+              AND (PlannedPayDate = @PayDate OR (PlannedPayDate IS NULL AND DueDate = @PayDate))
+            """,
+            new { BillId = billId, UserId = userId, PayDate = payDate, Status = status, SubmittedDate = submittedDate });
+    }
 }

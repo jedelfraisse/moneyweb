@@ -20,4 +20,7 @@ public interface IBillRepository
 
     /// <summary>Delete an open bill occurrence that matches the bill and its effective pay date (PlannedPayDate if set, otherwise DueDate).</summary>
     Task DeleteOccurrenceByBillAndPayDateAsync(int billId, int userId, DateOnly payDate);
+
+    /// <summary>Update the status (and optionally submitted date) of a bill occurrence matched by bill + effective pay date.</summary>
+    Task UpdateOccurrenceStatusByBillAndPayDateAsync(int billId, int userId, DateOnly payDate, BillOccurrenceStatus status, DateOnly? submittedDate);
 }

@@ -91,6 +91,7 @@ else
                         {
                             var t = row.Transaction;
                             var rowClass = t.IsSubmitted ? "table-info" :
+                                           (t.IsManualOverride && t.Category == TransactionCategory.Bill) ? "table-primary" :
                                            t.IsManualOverride ? "table-secondary" : "";
                             <tr class="@rowClass">
                                 <td class="text-nowrap">
@@ -123,6 +124,10 @@ else
                                     else if (t.IsAutoDraft)
                                     {
                                         <span class="badge bg-info text-dark" title="Vendor pulls automatically — date is fixed">Auto-Draft</span>
+                                    }
+                                    else if (t.IsManualOverride && t.Category == TransactionCategory.Bill)
+                                    {
+                                        <span class="badge bg-primary">📥 Received</span>
                                     }
                                     else if (t.IsManualOverride)
                                     {
@@ -378,7 +383,10 @@ else
 
     private async Task ConfirmSubmit(CashFlowTransaction t)
     {
+        var originalDate = t.TransactionDate;
         await CashFlowRepo.MarkAsSubmittedAsync(t.Id, _userId, _submitDate);
+        if (t.Category == TransactionCategory.Bill && t.ReferenceId.HasValue)
+            await BillRepo.UpdateOccurrenceStatusByBillAndPayDateAsync(t.ReferenceId.Value, _userId, originalDate, BillOccurrenceStatus.Submitted, _submitDate);
         _submittingId = null;
         await LoadAsync();
     }

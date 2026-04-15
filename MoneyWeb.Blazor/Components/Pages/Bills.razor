@@ -862,6 +862,13 @@ else
         if (newStatus == BillOccurrenceStatus.Submitted)
             occ.SubmittedDate = DateOnly.FromDateTime(DateTime.Today);
         await BillRepo.UpdateOccurrenceAsync(occ);
+        // Keep the CF transaction in sync with the bill occurrence status
+        if (occ.BillId.HasValue && !occ.IsOneOff)
+        {
+            var payDate = occ.PlannedPayDate ?? occ.DueDate;
+            if (newStatus == BillOccurrenceStatus.Submitted)
+                await CashFlowRepo.MarkSubmittedForSourceOnDateAsync(occ.BillId.Value, user.Id, TransactionCategory.Bill, payDate, occ.SubmittedDate!.Value);
+        }
         if (occ.BillId.HasValue)
         {
             _occurrences.Remove(occ.BillId.Value);

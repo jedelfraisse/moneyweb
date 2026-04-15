@@ -228,4 +228,16 @@ public class CashFlowRepository(string connectionString) : ICashFlowRepository
               AND TransactionDate = @Date
             """, new { ReferenceId = referenceId, UserId = userId, Category = (int)category, Date = date });
     }
+
+    public async Task MarkSubmittedForSourceOnDateAsync(int referenceId, int userId, TransactionCategory category, DateOnly date, DateOnly submittedDate)
+    {
+        using var conn = Connect();
+        await conn.ExecuteAsync("""
+            UPDATE CashFlowTransactions
+            SET IsSubmitted = 1, TransactionDate = @SubmittedDate, UpdatedAt = GETUTCDATE()
+            WHERE ReferenceId = @ReferenceId AND UserId = @UserId
+              AND Category = @Category AND IsManualOverride = 1 AND IsProjected = 1
+              AND TransactionDate = @Date
+            """, new { ReferenceId = referenceId, UserId = userId, Category = (int)category, Date = date, SubmittedDate = submittedDate });
+    }
 }
