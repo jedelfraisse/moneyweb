@@ -41,8 +41,12 @@ jobs:
           python3 - << 'PYEOF'
           import ftplib, io, os
           content = b'<html><body><h1>Site is updating, please check back shortly.</h1></body></html>'
+          server = os.environ['FTP_SERVER'].strip()
+          if '://' in server:
+              server = server.split('://', 1)[1]
+          server = server.rstrip('/')
           ftp = ftplib.FTP()
-          ftp.connect(os.environ['FTP_SERVER'])
+          ftp.connect(server)
           ftp.login(os.environ['FTP_USERNAME'], os.environ['FTP_PASSWORD'])
           ftp.storbinary('STOR app_offline.htm', io.BytesIO(content))
           ftp.quit()
@@ -75,8 +79,12 @@ jobs:
         run: |
           python3 - << 'PYEOF'
           import ftplib, os
+          server = os.environ['FTP_SERVER'].strip()
+          if '://' in server:
+              server = server.split('://', 1)[1]
+          server = server.rstrip('/')
           ftp = ftplib.FTP()
-          ftp.connect(os.environ['FTP_SERVER'])
+          ftp.connect(server)
           ftp.login(os.environ['FTP_USERNAME'], os.environ['FTP_PASSWORD'])
           try:
               ftp.delete('app_offline.htm')
