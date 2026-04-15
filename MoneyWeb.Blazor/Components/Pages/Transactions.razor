@@ -90,11 +90,11 @@ else
                         @foreach (var row in month.Rows)
                         {
                             var t = row.Transaction;
-                            var rowClass = t.IsSubmitted ? "table-info" :
-                                           (t.IsManualOverride && t.Category == TransactionCategory.Bill) ? "table-primary" :
-                                           (t.IsManualOverride && t.Category == TransactionCategory.DebtPayment) ? "table-warning" :
-                                           t.IsManualOverride ? "table-secondary" : "";
-                            <tr class="@rowClass">
+                            var rowStyle = t.IsSubmitted ? "background-color:#dff0fa;" :
+                                           (t.IsManualOverride && t.Category == TransactionCategory.Bill) ? "background-color:#ede9ff;" :
+                                           (t.IsManualOverride && t.Category == TransactionCategory.DebtPayment) ? "background-color:#fdebd0;" :
+                                           t.IsManualOverride ? "background-color:#f2f2f2;" : "";
+                            <tr style="@rowStyle">
                                 <td class="text-nowrap">
                                     @t.TransactionDate.ToString("MMM d, yyyy")
                                 </td>
@@ -168,7 +168,7 @@ else
                                                 <button class="btn btn-sm btn-outline-secondary me-1" title="Change date"
                                                         @onclick="() => _changingDateId = t.Id">📅</button>
                                             }
-                                            @if (!t.IsSubmitted)
+                                            @if (!t.IsSubmitted && !t.IsAutoDraft && !(t.IsManualOverride && t.Category == TransactionCategory.DebtPayment))
                                             {
                                                 <button class="btn btn-sm btn-outline-warning me-1" title="I told the vendor — record the submitted date"
                                                         @onclick="() => BeginSubmit(t.Id)">📤 Submit</button>
