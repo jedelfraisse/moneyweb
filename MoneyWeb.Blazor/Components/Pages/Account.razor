@@ -22,7 +22,21 @@ else
                     <h5 class="card-title">Profile</h5>
                     <dl class="row mb-0">
                         <dt class="col-sm-4">Name</dt>
-                        <dd class="col-sm-8">@_user.DisplayName</dd>
+                        <dd class="col-sm-8">
+                            @if (_editingName)
+                            {
+                                <div class="d-flex gap-2 align-items-center">
+                                    <input class="form-control form-control-sm" @bind="_nameInput" style="max-width:200px" />
+                                    <button class="btn btn-sm btn-primary" @onclick="SaveDisplayName">Save</button>
+                                    <button class="btn btn-sm btn-secondary" @onclick="() => _editingName = false">Cancel</button>
+                                </div>
+                            }
+                            else
+                            {
+                                <span>@_user.DisplayName</span>
+                                <button class="btn btn-link btn-sm p-0 ms-2" @onclick="StartEditName">edit</button>
+                            }
+                        </dd>
                         <dt class="col-sm-4">Email</dt>
                         <dd class="col-sm-8">@_user.Email</dd>
                         <dt class="col-sm-4">Member since</dt>
@@ -138,10 +152,26 @@ else
     private bool _confirmingDelete;
     private bool _prefsSaved;
     private string? _errorMessage;
+    private bool _editingName;
+    private string _nameInput = string.Empty;
 
     protected override async Task OnInitializedAsync()
     {
         _user = await CurrentUserSvc.GetCurrentUserAsync();
+    }
+
+    private void StartEditName()
+    {
+        _nameInput = _user?.DisplayName ?? string.Empty;
+        _editingName = true;
+    }
+
+    private async Task SaveDisplayName()
+    {
+        if (_user is null || string.IsNullOrWhiteSpace(_nameInput)) return;
+        _user.DisplayName = _nameInput.Trim();
+        await UserRepo.UpdateAsync(_user);
+        _editingName = false;
     }
 
     private async Task SavePreferences()
