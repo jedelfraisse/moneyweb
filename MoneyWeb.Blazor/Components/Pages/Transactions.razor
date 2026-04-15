@@ -9,6 +9,7 @@
 @inject ICashFlowRepository CashFlowRepo
 @inject IIncomeRepository IncomeRepo
 @inject IDebtRepository DebtRepo
+@inject IBillRepository BillRepo
 @inject NavigationManager Nav
 @inject SqidsEncoder<int> Sqids
 
@@ -388,6 +389,9 @@ else
 
     private async Task SkipTransaction(CashFlowTransaction t)
     {
+        // Skipping a bill CF transaction also removes the corresponding open bill occurrence
+        if (t.Category == TransactionCategory.Bill && t.ReferenceId.HasValue)
+            await BillRepo.DeleteOccurrenceByBillAndPayDateAsync(t.ReferenceId.Value, _userId, t.TransactionDate);
         await CashFlowRepo.DeleteAsync(t.Id, _userId);
         await LoadAsync();
     }
@@ -413,6 +417,9 @@ else
         // When clearing a debt payment, advance the debt's last payment date
         if (_confirmIsClearing && tx.Category == TransactionCategory.DebtPayment && tx.ReferenceId.HasValue)
             await DebtRepo.UpdateLastPaymentAsync(tx.ReferenceId.Value, _userId, tx.TransactionDate);
+        // When skipping a bill, also remove the open bill occurrence
+        if (!_confirmIsClearing && tx.Category == TransactionCategory.Bill && tx.ReferenceId.HasValue)
+            await BillRepo.DeleteOccurrenceByBillAndPayDateAsync(tx.ReferenceId.Value, _userId, tx.TransactionDate);
         await CashFlowRepo.DeleteAsync(tx.Id, _userId);
         CancelConfirm();
         await LoadAsync();

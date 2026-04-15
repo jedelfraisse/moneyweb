@@ -54,4 +54,7 @@ public interface ICashFlowRepository
 
     /// <summary>All projected transactions for a user and category, ordered by date. Used for pending payments views.</summary>
     Task<IEnumerable<CashFlowTransaction>> GetProjectedForCategoryAsync(int userId, TransactionCategory category);
+
+    /// <summary>Delete all manual-override projected transactions for a source on a specific date (e.g. when deleting a recorded bill occurrence).</summary>
+    Task DeleteManualProjectedOnDateAsync(int referenceId, int userId, TransactionCategory category, DateOnly date);
 }

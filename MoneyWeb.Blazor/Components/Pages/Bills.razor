@@ -883,6 +883,12 @@ else
         var user = await CurrentUserService.GetCurrentUserAsync();
         if (user is null) return;
         await BillRepo.DeleteOccurrenceAsync(occ.Id, user.Id);
+        // Delete the corresponding CF transaction that was inserted when this occurrence was recorded
+        if (occ.BillId.HasValue && !occ.IsOneOff)
+        {
+            var payDate = occ.PlannedPayDate ?? occ.DueDate;
+            await CashFlowRepo.DeleteManualProjectedOnDateAsync(occ.BillId.Value, user.Id, TransactionCategory.Bill, payDate);
+        }
         if (occ.BillId.HasValue)
         {
             _occurrences.Remove(occ.BillId.Value);

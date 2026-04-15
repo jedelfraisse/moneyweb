@@ -217,4 +217,15 @@ public class CashFlowRepository(string connectionString) : ICashFlowRepository
             ORDER BY TransactionDate, Id
             """, new { UserId = userId, Category = (int)category });
     }
+
+    public async Task DeleteManualProjectedOnDateAsync(int referenceId, int userId, TransactionCategory category, DateOnly date)
+    {
+        using var conn = Connect();
+        await conn.ExecuteAsync("""
+            DELETE FROM CashFlowTransactions
+            WHERE ReferenceId = @ReferenceId AND UserId = @UserId
+              AND Category = @Category AND IsProjected = 1 AND IsManualOverride = 1
+              AND TransactionDate = @Date
+            """, new { ReferenceId = referenceId, UserId = userId, Category = (int)category, Date = date });
+    }
 }

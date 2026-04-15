@@ -17,4 +17,7 @@ public interface IBillRepository
     Task<int> CreateOccurrenceAsync(BillOccurrence occurrence);
     Task UpdateOccurrenceAsync(BillOccurrence occurrence);
     Task DeleteOccurrenceAsync(int id, int userId);
+
+    /// <summary>Delete an open bill occurrence that matches the bill and its effective pay date (PlannedPayDate if set, otherwise DueDate).</summary>
+    Task DeleteOccurrenceByBillAndPayDateAsync(int billId, int userId, DateOnly payDate);
 }

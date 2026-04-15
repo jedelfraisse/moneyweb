@@ -143,4 +143,16 @@ public class BillRepository(string connectionString) : IBillRepository
             "DELETE FROM BillOccurrences WHERE Id = @Id AND UserId = @UserId",
             new { Id = id, UserId = userId });
     }
+
+    public async Task DeleteOccurrenceByBillAndPayDateAsync(int billId, int userId, DateOnly payDate)
+    {
+        using var conn = Connect();
+        await conn.ExecuteAsync(
+            """
+            DELETE FROM BillOccurrences
+            WHERE BillId = @BillId AND UserId = @UserId
+              AND (PlannedPayDate = @PayDate OR (PlannedPayDate IS NULL AND DueDate = @PayDate))
+            """,
+            new { BillId = billId, UserId = userId, PayDate = payDate });
+    }
 }
