@@ -69,7 +69,6 @@ else
                     <td class="text-end text-nowrap">
                         @if (income.BankAccountId.HasValue)
                         {
-                            <button class="btn btn-sm btn-outline-success me-1" @onclick="() => PushIncomeProjections(income)" title="Push projected income to Cash Flow">Push to Cash Flow</button>
                             <a class="btn btn-sm btn-link p-0 me-1 text-muted" href="/transactions/@Sqids.Encode(income.BankAccountId!.Value)">View →</a>
                         }
                         <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => OpenEditIncome(income)">Edit</button>
@@ -319,6 +318,10 @@ else
     {
         await IncomeRepo.AdvanceNextPaymentAsync(income.Id, _userId);
         await LoadAsync();
+        // Re-push projections now that the next payment date has advanced
+        var updated = _incomes.FirstOrDefault(i => i.Id == income.Id);
+        if (updated is not null)
+            await PushIncomeProjections(updated);
     }
 
     private async Task DeleteConfirmed()

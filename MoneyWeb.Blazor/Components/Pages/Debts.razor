@@ -14,6 +14,7 @@
 @inject IUserGroupRepository UserGroupRepo
 @inject ICashFlowRepository CashFlowRepo
 @inject IShareRepository ShareRepo
+@inject IDebtProjectionService DebtProjectionSvc
 @inject SqidsEncoder<int> Sqids
 
 <PageTitle>Debts – MoneyWeb</PageTitle>
@@ -83,7 +84,6 @@ else
                     }
                     @if (groupHasCashFlow)
                     {
-                        <button class="btn btn-sm btn-outline-success" @onclick="() => PushProjections(group)" title="Regenerate projected payments in Cash Flow">Push to Cash Flow</button>
                         @if (group.BankAccountId.HasValue)
                         {
                             <a class="btn btn-sm btn-link p-0 text-muted" href="/transactions/@Sqids.Encode(group.BankAccountId!.Value)">View →</a>
@@ -320,14 +320,7 @@ else
                             @if (debt.BankAccount is not null)
                             {
                                 <span class="text-muted small">@debt.BankAccount.Name</span>
-                                @if (_pushedDebtIds.Contains(debt.Id))
-                                {
-                                    <span class="badge bg-success ms-1" title="Projected payments are in Cash Flow">✓</span>
-                                }
-                                <button class="btn btn-sm btn-outline-success ms-1 px-1 py-0"
-                                        title="Push projected payments to cash flow"
-                                        @onclick="() => PushUngroupedDebt(debt)">↑</button>
-                                <a class="btn btn-sm btn-link p-0 text-muted" href="/transactions/@Sqids.Encode(debt.BankAccountId!.Value)">→</a>
+                                <a class="btn btn-sm btn-link p-0 ms-1 text-muted" href="/transactions/@Sqids.Encode(debt.BankAccountId!.Value)">→</a>
                             }
                             else
                             {
@@ -999,6 +992,7 @@ else
     private string? _debtError;
     private Debt? _deleteDebtTarget;
     private DateOnly _debtNextDueDate;
+    private int? _originalDebtGroupId;
     private List<DebtFee> _editingFees = [];
     private List<int> _deletedFeeIds = [];
     private string _newFeeName = string.Empty;
@@ -1119,7 +1113,7 @@ else
 
         // Always regenerate projected cash flow when a bank account is assigned
         if (_editingGroup.BankAccountId.HasValue)
-            await RegenerateProjectionsAsync(_editingGroup, includeManualOverrides: false);
+            await DebtProjectionSvc.PushGroupAsync(_editingGroup.Id, _userId, includeManualOverrides: false);
     }
 
     private async Task SaveGroupAndClearOverrides()
@@ -1136,14 +1130,13 @@ else
         await LoadAsync();
 
         if (_editingGroup.BankAccountId.HasValue)
-            await RegenerateProjectionsAsync(_editingGroup, includeManualOverrides: true);
+            await DebtProjectionSvc.PushGroupAsync(_editingGroup.Id, _userId, includeManualOverrides: true);
     }
 
     private async Task PushProjections(DebtGroup group)
     {
         int overrides = await CashFlowRepo.CountManualOverridesAsync(group.Id, _userId);
-        // Always keep manual overrides when pushing manually — only clear on explicit strategy change
-        await RegenerateProjectionsAsync(group, includeManualOverrides: false);
+        await DebtProjectionSvc.PushGroupAsync(group.Id, _userId, includeManualOverrides: false);
         if (overrides > 0)
             _groupError = $"Note: {overrides} manually overridden date(s) were preserved.";
     }
@@ -1195,36 +1188,7 @@ else
 
     private async Task PushUngroupedDebt(Debt debt)
     {
-        if (!debt.BankAccountId.HasValue) return;
-
-        await CashFlowRepo.DeleteProjectedForSourceAsync(debt.Id, _userId, TransactionCategory.DebtPayment);
-
-        var result = PayoffSvc.Calculate([debt], debt.MinimumPayment);
-        var minOnly = result.ForStrategy(PayoffStrategy.MinimumOnly);
-        if (minOnly.NeverPaysOff) return; // balance grows forever — no projection possible
-        var cutoff = DateOnly.FromDateTime(DateTime.Today.AddMonths(_horizonMonths));
-        var schedule = minOnly.PaymentSchedule
-            .Where(p => p.Date <= cutoff);
-
-        var transactions = schedule.Select(p => new CashFlowTransaction
-        {
-            UserId = _userId,
-            BankAccountId = debt.BankAccountId!.Value,
-            TransactionDate = p.Date,
-            Description = p.FeesAmount > 0
-                ? $"Debt Payment: {p.DebtName} (+ {p.FeesAmount.ToString("C")} fees)"
-                : $"Debt Payment: {p.DebtName}",
-            Amount = -(p.Amount + p.FeesAmount),
-            Category = TransactionCategory.DebtPayment,
-            ReferenceId = p.DebtId,
-            DebtGroupId = null,
-            IsProjected = true,
-            IsManualOverride = false,
-            IsAutoDraft = debt.PaymentMethod == DebtPaymentMethod.AutoDraft,
-            GeneratedByStrategy = PayoffStrategy.MinimumOnly
-        });
-
-        await CashFlowRepo.BulkInsertProjectedAsync(transactions);
+        await DebtProjectionSvc.PushDebtAsync(debt.Id, _userId);
         _pushedDebtIds.Add(debt.Id);
     }
 
@@ -1262,6 +1226,7 @@ else
         _groupIdStr = groupId.HasValue ? groupId.Value.ToString() : string.Empty;
         _debtBankIdStr = string.Empty;
         _debtNextDueDate = DateOnly.FromDateTime(DateTime.Today);
+        _originalDebtGroupId = groupId;
         _debtError = null;
         _showDebtModal = true;
         _editingFees = [];
@@ -1290,6 +1255,7 @@ else
         _groupIdStr = d.GroupId.HasValue ? d.GroupId.Value.ToString() : string.Empty;
         _debtBankIdStr = d.BankAccountId.HasValue ? d.BankAccountId.Value.ToString() : string.Empty;
         _debtNextDueDate = _editingDebt.NextPaymentDate ?? DateOnly.FromDateTime(DateTime.Today);
+        _originalDebtGroupId = d.GroupId;
         _debtError = null;
         _showDebtModal = true;
         _editingFees = d.Fees.Select(f => new DebtFee
@@ -1371,6 +1337,16 @@ else
 
         _showDebtModal = false;
         await LoadAsync();
+
+        // Auto-push projections. If the debt moved between groups, re-push the old group too.
+        var newGroupId = _editingDebt.GroupId;
+        if (_originalDebtGroupId.HasValue && _originalDebtGroupId != newGroupId)
+            await DebtProjectionSvc.PushGroupAsync(_originalDebtGroupId.Value, _userId);
+
+        if (newGroupId.HasValue)
+            await DebtProjectionSvc.PushGroupAsync(newGroupId.Value, _userId);
+        else
+            await DebtProjectionSvc.PushDebtAsync(savedId, _userId);
     }
 
     private void ConfirmDeleteDebt(Debt d) => _deleteDebtTarget = d;
@@ -1390,9 +1366,15 @@ else
     private async Task DeleteDebtConfirmed()
     {
         if (_deleteDebtTarget is null) return;
-        await DebtRepo.DeleteAsync(_deleteDebtTarget.Id, _userId);
+        var debt = _deleteDebtTarget;
+        await DebtRepo.DeleteAsync(debt.Id, _userId);
         _deleteDebtTarget = null;
         await LoadAsync();
+        // Re-push the group (recalculates without this debt) or delete standalone projections
+        if (debt.GroupId.HasValue)
+            await DebtProjectionSvc.PushGroupAsync(debt.GroupId.Value, _userId);
+        else
+            await DebtProjectionSvc.DeleteDebtProjectionsAsync(debt.Id, _userId);
     }
 
     private void AddFeeToList()

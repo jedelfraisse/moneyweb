@@ -3,6 +3,7 @@
 @using MoneyWeb.Blazor.Services
 @using MoneyWeb.Data.Models
 @using MoneyWeb.Data.Repositories.Interfaces
+@using MoneyWeb.Data.Services
 @attribute [Authorize]
 @inject CurrentUserService CurrentUserService
 @inject IBankAccountRepository AccountRepo
@@ -10,6 +11,7 @@
 @inject IIncomeRepository IncomeRepo
 @inject IDebtRepository DebtRepo
 @inject IBillRepository BillRepo
+@inject IDebtProjectionService DebtProjectionSvc
 @inject NavigationManager Nav
 @inject SqidsEncoder<int> Sqids
 
@@ -414,9 +416,17 @@ else
         // When clearing (not skipping) an income entry, advance the income's next payment date
         if (_confirmIsClearing && tx.Category == TransactionCategory.Income && tx.ReferenceId.HasValue)
             await IncomeRepo.AdvanceNextPaymentAsync(tx.ReferenceId.Value, _userId);
-        // When clearing a debt payment, advance the debt's last payment date
+        // When clearing a debt payment, advance the debt's last payment date and re-push projections
         if (_confirmIsClearing && tx.Category == TransactionCategory.DebtPayment && tx.ReferenceId.HasValue)
+        {
             await DebtRepo.UpdateLastPaymentAsync(tx.ReferenceId.Value, _userId, tx.TransactionDate);
+            await CashFlowRepo.DeleteAsync(tx.Id, _userId);
+            CancelConfirm();
+            await LoadAsync();
+            await DebtProjectionSvc.PushDebtAsync(tx.ReferenceId.Value, _userId);
+            await LoadAsync();
+            return;
+        }
         // When skipping a bill, also remove the open bill occurrence
         if (!_confirmIsClearing && tx.Category == TransactionCategory.Bill && tx.ReferenceId.HasValue)
             await BillRepo.DeleteOccurrenceByBillAndPayDateAsync(tx.ReferenceId.Value, _userId, tx.TransactionDate);
