@@ -39,6 +39,17 @@ else
                         </dd>
                         <dt class="col-sm-4">Email</dt>
                         <dd class="col-sm-8">@_user.Email</dd>
+                        <dt class="col-sm-4">Postal Code</dt>
+                        <dd class="col-sm-8">
+                            @if (!string.IsNullOrWhiteSpace(_user.PostalCode))
+                            {
+                                @_user.PostalCode
+                            }
+                            else
+                            {
+                                <span class="text-muted">Not set — add it to your Microsoft account profile</span>
+                            }
+                        </dd>
                         <dt class="col-sm-4">Member since</dt>
                         <dd class="col-sm-8">@_user.CreatedAt.ToString("MMMM d, yyyy")</dd>
                         <dt class="col-sm-4">Account type</dt>

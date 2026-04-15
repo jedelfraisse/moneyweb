@@ -36,6 +36,10 @@ public class CurrentUserService(IUserRepository userRepo, IUserGroupRepository u
             ? $"{givenName} {familyName}".Trim()
             : null; // null means "no reliable name from token"
 
+        var postalCode = principal.FindFirstValue("postalCode")
+                      ?? principal.FindFirstValue("postal_code")
+                      ?? string.Empty;
+
         var user = await userRepo.GetByEntraObjectIdAsync(oid);
         if (user is null)
         {
@@ -50,6 +54,7 @@ public class CurrentUserService(IUserRepository userRepo, IUserGroupRepository u
                 EntraObjectId = oid,
                 Email = email,
                 DisplayName = displayName,
+                PostalCode = postalCode,
                 IsApproved = false,
                 IsAdmin = false
             };
@@ -68,6 +73,8 @@ public class CurrentUserService(IUserRepository userRepo, IUserGroupRepository u
             { user.Email = email; changed = true; }
             if (nameFromClaims is not null && user.DisplayName != nameFromClaims)
             { user.DisplayName = nameFromClaims; changed = true; }
+            if (!string.IsNullOrWhiteSpace(postalCode) && user.PostalCode != postalCode)
+            { user.PostalCode = postalCode; changed = true; }
             if (changed) await userRepo.UpdateAsync(user);
         }
 
