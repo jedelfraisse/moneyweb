@@ -71,8 +71,6 @@ else
                             <td class="fw-semibold">
                                 @bill.Name
                                 @if (!bill.IsActive) { <span class="badge bg-secondary ms-1">Inactive</span> }
-                                @if (_pushedBillIds.Contains(bill.Id)) { <span class="badge bg-success ms-1">✓ Pushed</span> }
-                                else if (bill.BankAccountId.HasValue) { <span class="badge bg-light text-muted border ms-1">Not pushed</span> }
                             </td>
                             <td><span class="badge bg-light text-dark border">@bill.Category</span></td>
                             <td>@FrequencyLabel(bill.Frequency)</td>
@@ -86,7 +84,6 @@ else
                                 </button>
                                 @if (bill.BankAccountId.HasValue)
                                 {
-                                    <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => PushToCalendarAsync(bill)">Push ↗</button>
                                     <a class="btn btn-sm btn-link p-0 me-1 text-muted" href="/transactions/@Sqids.Encode(bill.BankAccountId!.Value)">View →</a>
                                 }
                                 <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => OpenEditBill(bill)">Edit</button>
@@ -242,8 +239,6 @@ else
                             <td class="fw-semibold">
                                 @bill.Name
                                 @if (!bill.IsActive) { <span class="badge bg-secondary ms-1">Inactive</span> }
-                                @if (_pushedBillIds.Contains(bill.Id)) { <span class="badge bg-success ms-1">✓ Pushed</span> }
-                                else if (bill.BankAccountId.HasValue) { <span class="badge bg-light text-muted border ms-1">Not pushed</span> }
                             </td>
                             <td><span class="badge bg-light text-dark border">@bill.Category</span></td>
                             <td>@FrequencyLabel(bill.Frequency)</td>
@@ -257,7 +252,6 @@ else
                                 </button>
                                 @if (bill.BankAccountId.HasValue)
                                 {
-                                    <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => PushToCalendarAsync(bill)">Push ↗</button>
                                     <a class="btn btn-sm btn-link p-0 me-1 text-muted" href="/transactions/@Sqids.Encode(bill.BankAccountId!.Value)">View →</a>
                                 }
                                 <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => OpenEditBill(bill)">Edit</button>
@@ -549,7 +543,6 @@ else
     private List<BillOccurrence> _openOccurrences = [];
     private HashSet<int> _expanded = [];
     private Dictionary<int, List<BillOccurrence>> _occurrences = [];
-    private HashSet<int> _pushedBillIds = [];
     private string? _errorMessage;
     private string _billSort = "date";   // "date" | "name"
 
@@ -583,7 +576,6 @@ else
         if (user is null) return;
         _bills = (await BillRepo.GetAllAsync(user.Id, activeOnly: false)).ToList();
         _bankAccounts = (await AccountRepo.GetAllAsync(user.Id)).ToList();
-        _pushedBillIds = [.. await CashFlowRepo.GetProjectedSourceIdsAsync(user.Id, TransactionCategory.Bill)];
         _openOccurrences = (await BillRepo.GetOpenOccurrencesAsync(user.Id)).ToList();
     }
 
@@ -938,7 +930,6 @@ else
         if (transactions.Count > 0)
             await CashFlowRepo.BulkInsertProjectedAsync(transactions);
 
-        _pushedBillIds.Add(bill.Id);
         _errorMessage = null;
         StateHasChanged();
     }

@@ -153,10 +153,6 @@ else
                         <button class="btn btn-sm btn-outline-success" @onclick="() => OpenContribute(fund)">Contribute</button>
                         <button class="btn btn-sm btn-outline-warning" @onclick="() => OpenWithdraw(fund)">Withdraw</button>
                         <button class="btn btn-sm btn-outline-secondary" @onclick="() => _markPaidTarget = fund">Mark Paid</button>
-                        @if (fund.BankAccountId.HasValue)
-                        {
-                            <button class="btn btn-sm btn-outline-info" @onclick="() => PushToFlow(fund)">Push to Cash Flow</button>
-                        }
                     </div>
                 </div>
             </div>
@@ -461,6 +457,9 @@ else
             await SinkingFundRepo.CreateAsync(_editing);
         else
             await SinkingFundRepo.UpdateAsync(_editing);
+
+        if (_editing.BankAccountId.HasValue)
+            await PushToFlow(_editing);
 
         _showModal = false;
         await LoadAsync();

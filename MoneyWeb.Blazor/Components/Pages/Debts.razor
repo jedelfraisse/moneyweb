@@ -51,14 +51,6 @@ else
                         <span class="badge bg-secondary ms-2">@group.BankAccount.Name</span>
                     }
                     <span class="ms-2 text-muted small">Budget: @group.MonthlyBudget.ToString("C")/mo</span>
-                    @if (_pushedGroupIds.Contains(group.Id))
-                    {
-                        <span class="badge bg-success ms-2" title="Projected payments are in Cash Flow">✓ Pushed</span>
-                    }
-                    else if (group.BankAccountId.HasValue || group.Debts.Any(d => d.BankAccountId.HasValue))
-                    {
-                        <span class="badge bg-light text-muted border ms-2" title="No projections in Cash Flow yet">Not pushed</span>
-                    }
                     @if (overBudget)
                     {
                         var shortfall = minSum - group.MonthlyBudget;
@@ -941,8 +933,6 @@ else
     private List<Debt> _sharedDebts = [];
     private List<BankAccount> _bankAccounts = [];
     private Dictionary<int, DebtPayoffResult> _payoffResults = [];
-    private HashSet<int> _pushedGroupIds = [];
-    private HashSet<int> _pushedDebtIds = [];
     private List<CashFlowTransaction> _pendingDebtPayments = [];
 
     // Schedule modal
@@ -1028,8 +1018,6 @@ else
         var allDebts = (await DebtRepo.GetAllAsync(_userId, activeOnly: true)).ToList();
         _ungrouped = allDebts.Where(d => d.GroupId is null).ToList();
 
-        _pushedGroupIds = [.. await CashFlowRepo.GetProjectedGroupIdsAsync(_userId)];
-        _pushedDebtIds  = [.. await CashFlowRepo.GetProjectedSourceIdsAsync(_userId, TransactionCategory.DebtPayment)];
         _pendingDebtPayments = [.. await CashFlowRepo.GetProjectedForCategoryAsync(_userId, TransactionCategory.DebtPayment)];
 
         _sharedDebts = (await DebtRepo.GetSharedWithMeAsync(_userId)).ToList();
@@ -1183,13 +1171,11 @@ else
             });
 
         await CashFlowRepo.BulkInsertProjectedAsync(transactions);
-        _pushedGroupIds.Add(group.Id);
     }
 
     private async Task PushUngroupedDebt(Debt debt)
     {
         await DebtProjectionSvc.PushDebtAsync(debt.Id, _userId);
-        _pushedDebtIds.Add(debt.Id);
     }
 
     private void ConfirmDeleteGroup(DebtGroup g) => _deleteGroupTarget = g;
