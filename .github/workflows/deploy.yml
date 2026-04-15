@@ -24,10 +24,9 @@ jobs:
         run: dotnet restore MoneyWeb.Blazor/MoneyWeb.Blazor.csproj
 
       - name: Write production appsettings
-        run: |
-          cat > MoneyWeb.Blazor/appsettings.Production.json << 'EOF'
-          ${{ secrets.APPSETTINGS_PRODUCTION }}
-          EOF
+        run: printf '%s' "$APPSETTINGS_PRODUCTION" > MoneyWeb.Blazor/appsettings.Production.json
+        env:
+          APPSETTINGS_PRODUCTION: ${{ secrets.APPSETTINGS_PRODUCTION }}
 
       - name: Publish
         run: |
