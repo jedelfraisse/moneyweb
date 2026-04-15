@@ -13,6 +13,16 @@ builder.AddServiceDefaults();
 builder.Services.AddAuthentication(OpenIdConnectDefaults.AuthenticationScheme)
     .AddMicrosoftIdentityWebApp(builder.Configuration.GetSection("AzureAd"));
 
+builder.Services.Configure<OpenIdConnectOptions>(OpenIdConnectDefaults.AuthenticationScheme, options =>
+{
+    options.Events.OnSignedOutCallbackRedirect = ctx =>
+    {
+        ctx.Response.Redirect("/");
+        ctx.HandleResponse();
+        return Task.CompletedTask;
+    };
+});
+
 builder.Services.AddAuthorization();
 builder.Services.AddRazorPages();
 builder.Services.AddHttpContextAccessor();
