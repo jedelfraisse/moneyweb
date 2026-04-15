@@ -10,6 +10,9 @@ public interface ICashFlowRepository
     /// <summary>Delete all projected transactions for a specific source (Income, Bill, Loan) by ReferenceId and Category.</summary>
     Task DeleteProjectedForSourceAsync(int referenceId, int userId, TransactionCategory category);
 
+    /// <summary>Delete projected transactions for a source up to and including a specific date (used when recording an actual bill).</summary>
+    Task DeleteProjectedForSourceUpToDateAsync(int referenceId, int userId, TransactionCategory category, DateOnly upToDate);
+
     /// <summary>Count of projected transactions for a debt group that the user has manually overridden.</summary>
     Task<int> CountManualOverridesAsync(int debtGroupId, int userId);
 
@@ -31,6 +34,9 @@ public interface ICashFlowRepository
     /// <summary>Insert a user-created manual transaction (not tied to any debt or bill).</summary>
     Task InsertManualAsync(CashFlowTransaction t);
 
+    /// <summary>Insert a user-scheduled projected payment (IsManualOverride = true, so strategy regeneration won't delete it).</summary>
+    Task InsertScheduledPaymentAsync(CashFlowTransaction t);
+
     /// <summary>Delete a single transaction (skip/remove from cash flow).</summary>
     Task DeleteAsync(int id, int userId);
 
@@ -39,4 +45,13 @@ public interface ICashFlowRepository
 
     /// <summary>Distinct DebtGroupIds that have at least one projected transaction.</summary>
     Task<IEnumerable<int>> GetProjectedGroupIdsAsync(int userId);
+
+    /// <summary>Update the amount on all future projected transactions for a given source (e.g. after recording an actual bill amount).</summary>
+    Task UpdateProjectedAmountsAsync(int referenceId, int userId, TransactionCategory category, decimal newAmount, DateOnly fromDate);
+
+    /// <summary>Returns true if a projected (non-manual-override) transaction already exists for the given source on the specified date.</summary>
+    Task<bool> HasProjectedForSourceOnDateAsync(int referenceId, int userId, TransactionCategory category, DateOnly date);
+
+    /// <summary>All projected transactions for a user and category, ordered by date. Used for pending payments views.</summary>
+    Task<IEnumerable<CashFlowTransaction>> GetProjectedForCategoryAsync(int userId, TransactionCategory category);
 }

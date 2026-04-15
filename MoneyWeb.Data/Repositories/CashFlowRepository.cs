@@ -33,6 +33,17 @@ public class CashFlowRepository(string connectionString) : ICashFlowRepository
             """, new { ReferenceId = referenceId, UserId = userId, Category = (int)category });
     }
 
+    public async Task DeleteProjectedForSourceUpToDateAsync(int referenceId, int userId, TransactionCategory category, DateOnly upToDate)
+    {
+        using var conn = Connect();
+        await conn.ExecuteAsync("""
+            DELETE FROM CashFlowTransactions
+            WHERE ReferenceId = @ReferenceId AND UserId = @UserId
+              AND Category = @Category AND IsProjected = 1 AND IsManualOverride = 0
+              AND TransactionDate <= @UpToDate
+            """, new { ReferenceId = referenceId, UserId = userId, Category = (int)category, UpToDate = upToDate });
+    }
+
     public async Task<int> CountManualOverridesAsync(int debtGroupId, int userId)
     {
         using var conn = Connect();
@@ -152,5 +163,58 @@ public class CashFlowRepository(string connectionString) : ICashFlowRepository
             SELECT DISTINCT DebtGroupId FROM CashFlowTransactions
             WHERE UserId = @UserId AND IsProjected = 1 AND DebtGroupId IS NOT NULL
             """, new { UserId = userId });
+    }
+
+    public async Task UpdateProjectedAmountsAsync(int referenceId, int userId, TransactionCategory category, decimal newAmount, DateOnly fromDate)
+    {
+        using var conn = Connect();
+        await conn.ExecuteAsync("""
+            UPDATE CashFlowTransactions
+            SET Amount = @Amount, UpdatedAt = GETUTCDATE()
+            WHERE ReferenceId = @ReferenceId AND UserId = @UserId
+              AND Category = @Category AND IsProjected = 1 AND IsManualOverride = 0
+              AND TransactionDate >= @FromDate
+            """, new { ReferenceId = referenceId, UserId = userId, Category = (int)category, Amount = newAmount, FromDate = fromDate });
+    }
+
+    public async Task<bool> HasProjectedForSourceOnDateAsync(int referenceId, int userId, TransactionCategory category, DateOnly date)
+    {
+        using var conn = Connect();
+        var count = await conn.ExecuteScalarAsync<int>("""
+            SELECT COUNT(1) FROM CashFlowTransactions
+            WHERE ReferenceId = @ReferenceId AND UserId = @UserId
+              AND Category = @Category AND IsProjected = 1
+              AND TransactionDate = @Date
+            """, new { ReferenceId = referenceId, UserId = userId, Category = (int)category, Date = date });
+        return count > 0;
+    }
+
+    public async Task InsertScheduledPaymentAsync(CashFlowTransaction t)
+    {
+        using var conn = Connect();
+        await conn.ExecuteAsync("""
+            INSERT INTO CashFlowTransactions
+                (UserId, BankAccountId, TransactionDate, Description, Amount, Category,
+                 ReferenceId, DebtGroupId, IsProjected, IsManualOverride, IsAutoDraft, IsSubmitted,
+                 GeneratedByStrategy, CreatedAt, UpdatedAt)
+            VALUES
+                (@UserId, @BankAccountId, @TransactionDate, @Description, @Amount, @Category,
+                 @ReferenceId, NULL, 1, 1, @IsAutoDraft, @IsSubmitted,
+                 NULL, GETUTCDATE(), GETUTCDATE())
+            """, new
+        {
+            t.UserId, t.BankAccountId, t.TransactionDate, t.Description,
+            t.Amount, Category = (int)t.Category, t.ReferenceId, t.IsAutoDraft, t.IsSubmitted
+        });
+    }
+
+    public async Task<IEnumerable<CashFlowTransaction>> GetProjectedForCategoryAsync(int userId, TransactionCategory category)
+    {
+        using var conn = Connect();
+        return await conn.QueryAsync<CashFlowTransaction>("""
+            SELECT * FROM CashFlowTransactions
+            WHERE UserId = @UserId AND Category = @Category AND IsProjected = 1
+            ORDER BY TransactionDate, Id
+            """, new { UserId = userId, Category = (int)category });
     }
 }

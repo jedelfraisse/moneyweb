@@ -45,7 +45,8 @@ public class Debt
     public bool IsMinBelowInterest => Balance > 0 && InterestRate > 0 && MinimumPayment < MonthlyInterest;
 
     /// <summary>
-    /// Next upcoming occurrence of PaymentDayOfMonth on or after today.
+    /// Next upcoming occurrence of PaymentDayOfMonth strictly after the later of today or LastPaymentDate.
+    /// This prevents showing a date that has already been paid (including future-dated payments).
     /// Returns null when no payment day is configured.
     /// </summary>
     public DateOnly? NextPaymentDate
@@ -54,11 +55,15 @@ public class Debt
         {
             if (!PaymentDayOfMonth.HasValue) return null;
             var today = DateOnly.FromDateTime(DateTime.Today);
-            int day = Math.Min(PaymentDayOfMonth.Value, DateTime.DaysInMonth(today.Year, today.Month));
-            var candidate = new DateOnly(today.Year, today.Month, day);
-            if (candidate < today)
+            // If the last payment was made on or after today, use that as the anchor so we skip past it
+            var from = LastPaymentDate.HasValue && LastPaymentDate.Value >= today
+                ? LastPaymentDate.Value
+                : today.AddDays(-1);
+            int day = Math.Min(PaymentDayOfMonth.Value, DateTime.DaysInMonth(from.Year, from.Month));
+            var candidate = new DateOnly(from.Year, from.Month, day);
+            if (candidate <= from)
             {
-                var next = today.AddMonths(1);
+                var next = from.AddMonths(1);
                 day = Math.Min(PaymentDayOfMonth.Value, DateTime.DaysInMonth(next.Year, next.Month));
                 candidate = new DateOnly(next.Year, next.Month, day);
             }

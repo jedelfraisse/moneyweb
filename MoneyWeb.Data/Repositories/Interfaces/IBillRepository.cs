@@ -13,6 +13,7 @@ public interface IBillRepository
     // Occurrences
     Task<IEnumerable<BillOccurrence>> GetOccurrencesAsync(int billId, int userId);
     Task<IEnumerable<BillOccurrence>> GetUpcomingOccurrencesAsync(int userId, DateOnly from, DateOnly to);
+    Task<IEnumerable<BillOccurrence>> GetOpenOccurrencesAsync(int userId);
     Task<int> CreateOccurrenceAsync(BillOccurrence occurrence);
     Task UpdateOccurrenceAsync(BillOccurrence occurrence);
     Task DeleteOccurrenceAsync(int id, int userId);

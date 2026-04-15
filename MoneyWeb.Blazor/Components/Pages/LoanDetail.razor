@@ -146,7 +146,7 @@ else
                             <td class="text-end fw-semibold @(runningBalance > 0 ? "text-danger" : "text-success")">@runningBalance.ToString("C")</td>
                             <td class="text-muted small">@(tx.Notes ?? "—")</td>
                             <td class="text-end">
-                                <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteTransactionAsync(tx)">Delete</button>
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => _deletingTx = tx">Delete</button>
                             </td>
                         </tr>
                     }
@@ -154,6 +154,28 @@ else
             </table>
         </div>
     }
+}
+
+@if (_deletingTx is not null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.5)">
+        <div class="modal-dialog modal-sm">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Delete Transaction?</h5>
+                    <button type="button" class="btn-close" @onclick="() => _deletingTx = null"></button>
+                </div>
+                <div class="modal-body">
+                    Delete the <strong>@_deletingTx.TransactionDate.ToString("MMM d, yyyy")</strong>
+                    @(_deletingTx.Type.ToString().ToLower()) of <strong>@_deletingTx.Amount.ToString("C")</strong>?
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="() => _deletingTx = null">Cancel</button>
+                    <button class="btn btn-danger" @onclick="ConfirmDeleteTransactionAsync">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
 }
 
 @if (_showTxModal)
@@ -268,6 +290,7 @@ else
     private int _userId;
 
     private bool _showTxModal;
+    private LoanTransaction? _deletingTx;
     private bool _sortDescending = false;
     private bool _generatingInterest;
     private int? _interestGenerated;
@@ -355,6 +378,14 @@ else
         await LoanRepo.UpdateAsync(_loan);
         _showTxModal = false;
         await LoadAsync();
+    }
+
+    private async Task ConfirmDeleteTransactionAsync()
+    {
+        if (_deletingTx is null) return;
+        var tx = _deletingTx;
+        _deletingTx = null;
+        await DeleteTransactionAsync(tx);
     }
 
     private async Task DeleteTransactionAsync(LoanTransaction tx)

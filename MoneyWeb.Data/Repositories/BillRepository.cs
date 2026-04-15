@@ -13,7 +13,9 @@ public class BillRepository(string connectionString) : IBillRepository
     {
         using var conn = Connect();
         var sql = $"""
-            SELECT b.*, ba.Name AS BankAccountName
+            SELECT b.*,
+                   ba.Name AS BankAccountName,
+                   (SELECT MAX(o.DueDate) FROM BillOccurrences o WHERE o.BillId = b.Id AND o.UserId = b.UserId) AS LastOccurrenceDueDate
             FROM Bills b
             LEFT JOIN BankAccounts ba ON ba.Id = b.BankAccountId
             WHERE b.UserId = @UserId{(activeOnly ? " AND b.IsActive = 1" : "")}
@@ -78,7 +80,7 @@ public class BillRepository(string connectionString) : IBillRepository
             """
             SELECT o.*, b.Name AS BillName
             FROM BillOccurrences o
-            INNER JOIN Bills b ON b.Id = o.BillId
+            LEFT JOIN Bills b ON b.Id = o.BillId
             WHERE o.BillId = @BillId AND o.UserId = @UserId
             ORDER BY o.DueDate DESC
             """, new { BillId = billId, UserId = userId });
@@ -91,10 +93,23 @@ public class BillRepository(string connectionString) : IBillRepository
             """
             SELECT o.*, b.Name AS BillName
             FROM BillOccurrences o
-            INNER JOIN Bills b ON b.Id = o.BillId
+            LEFT JOIN Bills b ON b.Id = o.BillId
             WHERE o.UserId = @UserId AND o.DueDate >= @From AND o.DueDate <= @To
             ORDER BY o.DueDate
             """, new { UserId = userId, From = from, To = to });
+    }
+
+    public async Task<IEnumerable<BillOccurrence>> GetOpenOccurrencesAsync(int userId)
+    {
+        using var conn = Connect();
+        return await conn.QueryAsync<BillOccurrence>(
+            """
+            SELECT o.*, b.Name AS BillName
+            FROM BillOccurrences o
+            LEFT JOIN Bills b ON b.Id = o.BillId
+            WHERE o.UserId = @UserId AND o.Status <> 3
+            ORDER BY o.DueDate
+            """, new { UserId = userId });
     }
 
     public async Task<int> CreateOccurrenceAsync(BillOccurrence occ)
@@ -103,9 +118,9 @@ public class BillRepository(string connectionString) : IBillRepository
         return await conn.ExecuteScalarAsync<int>(
             """
             INSERT INTO BillOccurrences
-                (BillId, UserId, DueDate, EstimatedAmount, ActualAmount, Status, PlannedPayDate, SubmittedDate, Notes, CreatedAt, UpdatedAt)
+                (BillId, UserId, Name, DueDate, EstimatedAmount, ActualAmount, Status, PlannedPayDate, SubmittedDate, Notes, CreatedAt, UpdatedAt)
             OUTPUT INSERTED.Id
-            VALUES (@BillId, @UserId, @DueDate, @EstimatedAmount, @ActualAmount, @Status, @PlannedPayDate, @SubmittedDate, @Notes, GETUTCDATE(), GETUTCDATE())
+            VALUES (@BillId, @UserId, @Name, @DueDate, @EstimatedAmount, @ActualAmount, @Status, @PlannedPayDate, @SubmittedDate, @Notes, GETUTCDATE(), GETUTCDATE())
             """, occ);
     }
 
@@ -115,7 +130,7 @@ public class BillRepository(string connectionString) : IBillRepository
         await conn.ExecuteAsync(
             """
             UPDATE BillOccurrences SET
-                DueDate = @DueDate, EstimatedAmount = @EstimatedAmount, ActualAmount = @ActualAmount,
+                Name = @Name, DueDate = @DueDate, EstimatedAmount = @EstimatedAmount, ActualAmount = @ActualAmount,
                 Status = @Status, PlannedPayDate = @PlannedPayDate, SubmittedDate = @SubmittedDate, Notes = @Notes, UpdatedAt = GETUTCDATE()
             WHERE Id = @Id AND UserId = @UserId
             """, occ);

@@ -222,6 +222,10 @@ else
                                     <td class="text-end">@(payoffDate?.ToString("MMM yyyy") ?? "—")</td>
                                     <td class="text-end text-nowrap">
                                         <button class="btn btn-sm btn-outline-info me-1" @onclick="() => OpenSchedule(debt, activeResult)" title="View payment schedule">Schedule</button>
+                                        @if (debt.PaymentMethod == DebtPaymentMethod.Manual && debt.BankAccountId.HasValue)
+                                        {
+                                            <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => OpenSchedulePaymentModal(debt)" title="Schedule a pending payment">Pay</button>
+                                        }
                                         <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => OpenEditDebt(debt)">Edit</button>
                                         <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDeleteDebt(debt)">Delete</button>
                                     </td>
@@ -346,6 +350,10 @@ else
                         </td>
                         <td class="text-end text-nowrap">
                             <button class="btn btn-sm btn-outline-info me-1" @onclick="() => OpenScheduleUngrouped(debt)" title="View payment schedule">Schedule</button>
+                            @if (debt.PaymentMethod == DebtPaymentMethod.Manual && debt.BankAccountId.HasValue)
+                            {
+                                <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => OpenSchedulePaymentModal(debt)" title="Schedule a pending payment">Pay</button>
+                            }
                             <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => OpenEditDebt(debt)">Edit</button>
                             <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDeleteDebt(debt)">Delete</button>
                         </td>
@@ -398,6 +406,152 @@ else
             }
         </tbody>
     </table>
+}
+
+@* ── Pending Debt Payments ── *@
+@{
+    var allDebts = _groups.SelectMany(g => g.Debts).Concat(_ungrouped).ToList();
+    var debtLookup = allDebts.ToDictionary(d => d.Id);
+    var manualPending = _pendingDebtPayments
+        .Where(t => t.ReferenceId.HasValue && debtLookup.TryGetValue(t.ReferenceId.Value, out var d) && d.PaymentMethod == DebtPaymentMethod.Manual)
+        .OrderBy(t => t.TransactionDate)
+        .ToList();
+}
+@if (manualPending.Any() || allDebts.Any(d => d.PaymentMethod == DebtPaymentMethod.Manual && d.BankAccountId.HasValue))
+{
+    <h2 class="h5 mt-4">Pending Payments</h2>
+    @if (manualPending.Any())
+    {
+        <table class="table table-sm table-hover">
+            <thead>
+                <tr>
+                    <th>Debt</th>
+                    <th>Date</th>
+                    <th class="text-end">Amount</th>
+                    <th>Status</th>
+                    <th>Notes</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var tx in manualPending)
+                {
+                    var txDebt = tx.ReferenceId.HasValue && debtLookup.TryGetValue(tx.ReferenceId.Value, out var d2) ? d2 : null;
+                    <tr>
+                        <td>@(txDebt?.Name ?? "—")</td>
+                        <td class="text-nowrap">@tx.TransactionDate.ToString("MMM d, yyyy")</td>
+                        <td class="text-end">@tx.Amount.ToString("C")</td>
+                        <td>
+                            @if (tx.IsSubmitted)
+                            {
+                                <span class="badge bg-info">Submitted</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-secondary">Pending</span>
+                            }
+                        </td>
+                        <td class="text-muted small">@tx.Description</td>
+                        <td class="text-end text-nowrap">
+                            @if (!tx.IsSubmitted)
+                            {
+                                <button class="btn btn-sm btn-outline-info me-1 px-1 py-0" title="Mark as submitted/sent"
+                                        @onclick="() => SubmitPendingPayment(tx)">Submit</button>
+                            }
+                            <button class="btn btn-sm btn-outline-success me-1 px-1 py-0" title="Payment confirmed — mark paid"
+                                    @onclick="() => BeginConfirmPendingPayment(tx, txDebt)">✓</button>
+                            <button class="btn btn-sm btn-outline-danger px-1 py-0" title="Remove this pending payment"
+                                    @onclick="() => _deletingPendingPayment = tx">✕</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+    else
+    {
+        <p class="text-muted small">No pending payments scheduled. Use the "Schedule" button on a manual debt to add one.</p>
+    }
+}
+
+@* ── Confirm pending payment dialog ── *@
+@if (_confirmingPendingPayment is not null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.4)">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Confirm Payment</h5>
+                </div>
+                <div class="modal-body">
+                    <p>Mark <strong>@_confirmingPendingDebt?.Name</strong> payment of <strong>@_confirmingPendingPayment.Amount.ToString("C")</strong> on <strong>@_confirmingPendingPayment.TransactionDate.ToString("MMM d, yyyy")</strong> as cleared?</p>
+                    <p class="text-muted small">This will update the debt's last payment date and remove it from pending payments.</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="() => { _confirmingPendingPayment = null; _confirmingPendingDebt = null; }">Cancel</button>
+                    <button class="btn btn-success" @onclick="ConfirmPendingPaymentAsync">Confirm</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ── Delete pending payment dialog ── *@
+@if (_deletingPendingPayment is not null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.4)">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Remove Pending Payment?</h5>
+                </div>
+                <div class="modal-body">
+                    <p>Remove the scheduled payment of <strong>@_deletingPendingPayment.Amount.ToString("C")</strong> on <strong>@_deletingPendingPayment.TransactionDate.ToString("MMM d, yyyy")</strong>?</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="() => _deletingPendingPayment = null">Cancel</button>
+                    <button class="btn btn-danger" @onclick="DeletePendingPaymentAsync">Remove</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ── Schedule Payment Modal ── *@
+@if (_showSchedulePaymentModal && _schedulePaymentDebt is not null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.4)">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Schedule Payment — @_schedulePaymentDebt.Name</h5>
+                    <button type="button" class="btn-close" @onclick="CloseSchedulePaymentModal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Payment Date</label>
+                        <input type="date" class="form-control" @bind="_schedulePaymentDate" @bind:format="yyyy-MM-dd" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Amount</label>
+                        <input type="number" step="0.01" class="form-control" @bind="_schedulePaymentAmount" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Notes (optional)</label>
+                        <input class="form-control" @bind="_schedulePaymentNotes" placeholder="e.g., extra principal" />
+                    </div>
+                    @if (_schedulePaymentError is not null)
+                    {
+                        <div class="alert alert-danger py-1">@_schedulePaymentError</div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CloseSchedulePaymentModal">Cancel</button>
+                    <button class="btn btn-primary" @onclick="SaveScheduledPaymentAsync">Schedule</button>
+                </div>
+            </div>
+        </div>
+    </div>
 }
 
 @* ── Group Modal ── *@
@@ -528,9 +682,9 @@ else
                             </select>
                         </div>
                         <div class="col">
-                            <label class="form-label">Payment Day of Month</label>
-                            <input class="form-control" type="number" min="1" max="31" placeholder="e.g. 15"
-                                   @bind="_editingDebt.PaymentDayOfMonth" />
+                            <label class="form-label">Next Due Date</label>
+                            <input type="date" class="form-control" @bind="_debtNextDueDate" @bind:format="yyyy-MM-dd" />
+                            <div class="form-text text-muted">Day of month is saved from this date.</div>
                         </div>
                     </div>
                     <div class="mb-3">
@@ -796,10 +950,24 @@ else
     private Dictionary<int, DebtPayoffResult> _payoffResults = [];
     private HashSet<int> _pushedGroupIds = [];
     private HashSet<int> _pushedDebtIds = [];
+    private List<CashFlowTransaction> _pendingDebtPayments = [];
 
     // Schedule modal
     private Debt? _scheduleDebt;
     private List<ScheduledPayment>? _scheduleRows;
+
+    // Pending payments
+    private CashFlowTransaction? _confirmingPendingPayment;
+    private Debt? _confirmingPendingDebt;
+    private CashFlowTransaction? _deletingPendingPayment;
+
+    // Schedule payment modal (for adding a pending payment on a manual debt)
+    private bool _showSchedulePaymentModal;
+    private Debt? _schedulePaymentDebt;
+    private DateOnly _schedulePaymentDate;
+    private decimal _schedulePaymentAmount;
+    private string _schedulePaymentNotes = string.Empty;
+    private string? _schedulePaymentError;
 
     private void OpenSchedule(Debt debt, StrategyResult result)
     {
@@ -830,6 +998,7 @@ else
     private string _debtBankIdStr = string.Empty;
     private string? _debtError;
     private Debt? _deleteDebtTarget;
+    private DateOnly _debtNextDueDate;
     private List<DebtFee> _editingFees = [];
     private List<int> _deletedFeeIds = [];
     private string _newFeeName = string.Empty;
@@ -867,6 +1036,7 @@ else
 
         _pushedGroupIds = [.. await CashFlowRepo.GetProjectedGroupIdsAsync(_userId)];
         _pushedDebtIds  = [.. await CashFlowRepo.GetProjectedSourceIdsAsync(_userId, TransactionCategory.DebtPayment)];
+        _pendingDebtPayments = [.. await CashFlowRepo.GetProjectedForCategoryAsync(_userId, TransactionCategory.DebtPayment)];
 
         _sharedDebts = (await DebtRepo.GetSharedWithMeAsync(_userId)).ToList();
 
@@ -1091,6 +1261,7 @@ else
         _editingDebt = new Debt { UserId = _userId, IsActive = true };
         _groupIdStr = groupId.HasValue ? groupId.Value.ToString() : string.Empty;
         _debtBankIdStr = string.Empty;
+        _debtNextDueDate = DateOnly.FromDateTime(DateTime.Today);
         _debtError = null;
         _showDebtModal = true;
         _editingFees = [];
@@ -1118,6 +1289,7 @@ else
         };
         _groupIdStr = d.GroupId.HasValue ? d.GroupId.Value.ToString() : string.Empty;
         _debtBankIdStr = d.BankAccountId.HasValue ? d.BankAccountId.Value.ToString() : string.Empty;
+        _debtNextDueDate = _editingDebt.NextPaymentDate ?? DateOnly.FromDateTime(DateTime.Today);
         _debtError = null;
         _showDebtModal = true;
         _editingFees = d.Fees.Select(f => new DebtFee
@@ -1144,6 +1316,7 @@ else
         _editingDebt.GroupId = int.TryParse(_groupIdStr, out var gid) ? gid : null;
         _editingDebt.BankAccountId = int.TryParse(_debtBankIdStr, out var bid) ? bid : null;
         _editingDebt.UserId = _userId;
+        _editingDebt.PaymentDayOfMonth = _debtNextDueDate != default ? _debtNextDueDate.Day : null;
 
         // Auto-assign sort order for new debts
         if (_editingDebt.Id == 0 && _editingDebt.GroupId.HasValue)
@@ -1247,6 +1420,88 @@ else
     private async Task ConfirmPayment(Debt debt)
     {
         await DebtRepo.UpdateLastPaymentAsync(debt.Id, _userId, DateOnly.FromDateTime(DateTime.Today));
+        await LoadAsync();
+    }
+
+    // ── Pending Payment Methods ──────────────────────────────────
+
+    private void OpenSchedulePaymentModal(Debt debt)
+    {
+        _schedulePaymentDebt = debt;
+        _schedulePaymentDate = debt.NextPaymentDate ?? DateOnly.FromDateTime(DateTime.Today);
+        _schedulePaymentAmount = debt.TotalMonthlyPayment;
+        _schedulePaymentNotes = string.Empty;
+        _schedulePaymentError = null;
+        _showSchedulePaymentModal = true;
+    }
+
+    private void CloseSchedulePaymentModal()
+    {
+        _showSchedulePaymentModal = false;
+        _schedulePaymentDebt = null;
+    }
+
+    private async Task SaveScheduledPaymentAsync()
+    {
+        if (_schedulePaymentDebt is null) return;
+        if (_schedulePaymentAmount <= 0)
+        {
+            _schedulePaymentError = "Amount must be greater than zero.";
+            return;
+        }
+        if (!_schedulePaymentDebt.BankAccountId.HasValue)
+        {
+            _schedulePaymentError = "Debt must have a bank account to schedule a payment.";
+            return;
+        }
+        var tx = new CashFlowTransaction
+        {
+            BankAccountId = _schedulePaymentDebt.BankAccountId.Value,
+            UserId = _userId,
+            TransactionDate = _schedulePaymentDate,
+            Amount = -_schedulePaymentAmount,
+            Description = string.IsNullOrWhiteSpace(_schedulePaymentNotes)
+                ? $"Debt Payment: {_schedulePaymentDebt.Name}"
+                : $"Debt Payment: {_schedulePaymentDebt.Name} — {_schedulePaymentNotes}",
+            Category = TransactionCategory.DebtPayment,
+            ReferenceId = _schedulePaymentDebt.Id,
+            IsProjected = true,
+            IsManualOverride = true,
+        };
+        await CashFlowRepo.InsertScheduledPaymentAsync(tx);
+        CloseSchedulePaymentModal();
+        await LoadAsync();
+    }
+
+    private void BeginConfirmPendingPayment(CashFlowTransaction tx, Debt? debt)
+    {
+        _confirmingPendingPayment = tx;
+        _confirmingPendingDebt = debt;
+    }
+
+    private async Task ConfirmPendingPaymentAsync()
+    {
+        if (_confirmingPendingPayment is null) return;
+        var tx = _confirmingPendingPayment;
+        if (tx.ReferenceId.HasValue)
+            await DebtRepo.UpdateLastPaymentAsync(tx.ReferenceId.Value, _userId, tx.TransactionDate);
+        await CashFlowRepo.DeleteAsync(tx.Id, _userId);
+        _confirmingPendingPayment = null;
+        _confirmingPendingDebt = null;
+        await LoadAsync();
+    }
+
+    private async Task SubmitPendingPayment(CashFlowTransaction tx)
+    {
+        await CashFlowRepo.MarkAsSubmittedAsync(tx.Id, _userId, DateOnly.FromDateTime(DateTime.Today));
+        await LoadAsync();
+    }
+
+    private async Task DeletePendingPaymentAsync()
+    {
+        if (_deletingPendingPayment is null) return;
+        await CashFlowRepo.DeleteAsync(_deletingPendingPayment.Id, _userId);
+        _deletingPendingPayment = null;
         await LoadAsync();
     }
 }

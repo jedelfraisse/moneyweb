@@ -7,6 +7,8 @@
 @inject CurrentUserService CurrentUserService
 @inject IBankAccountRepository AccountRepo
 @inject ICashFlowRepository CashFlowRepo
+@inject IIncomeRepository IncomeRepo
+@inject IDebtRepository DebtRepo
 @inject NavigationManager Nav
 @inject SqidsEncoder<int> Sqids
 
@@ -86,7 +88,7 @@ else
                         {
                             var t = row.Transaction;
                             var rowClass = t.IsSubmitted ? "table-info" :
-                                           t.IsManualOverride ? "table-warning" : "";
+                                           t.IsManualOverride ? "table-secondary" : "";
                             <tr class="@rowClass">
                                 <td class="text-nowrap">
                                     @t.TransactionDate.ToString("MMM d, yyyy")
@@ -121,7 +123,7 @@ else
                                     }
                                     else if (t.IsManualOverride)
                                     {
-                                        <span class="badge bg-warning text-dark">Manual – Custom Date</span>
+                                        <span class="badge bg-secondary">Manual – Custom Date</span>
                                     }
                                     else
                                     {
@@ -159,9 +161,9 @@ else
                                                         @onclick="() => BeginSubmit(t.Id)">📤 Submit</button>
                                             }
                                             <button class="btn btn-sm btn-outline-success me-1" title="Payment cleared/confirmed"
-                                                    @onclick="() => MarkProcessed(t)">✓</button>
+                                                    @onclick="() => BeginConfirm(t, true)">✓</button>
                                             <button class="btn btn-sm btn-outline-danger" title="Skip / remove this projected entry"
-                                                    @onclick="() => SkipTransaction(t)">Skip</button>
+                                                    @onclick="() => BeginConfirm(t, false)">Skip</button>
                                         }
                                     }
                                 </td>
@@ -188,6 +190,42 @@ else
             </table>
         </div>
     }
+}
+
+@* ── Clear / Skip Confirmation Modal ── *@
+@if (_confirmingTransaction is not null)
+{
+    var isClearing = _confirmIsClearing;
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.5)">
+        <div class="modal-dialog modal-sm">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@(isClearing ? "Confirm Cleared" : "Skip Transaction")</h5>
+                    <button class="btn-close" @onclick="CancelConfirm"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-1">
+                        @if (isClearing)
+                        {
+                            <span>Mark as cleared and remove from forecast?</span>
+                        }
+                        else
+                        {
+                            <span>Skip and remove from forecast?</span>
+                        }
+                    </p>
+                    <p class="fw-semibold mb-0">@_confirmingTransaction.Description</p>
+                    <p class="text-muted small">@_confirmingTransaction.TransactionDate.ToString("MMM d, yyyy") · @_confirmingTransaction.Amount.ToString("C")</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn @(isClearing ? "btn-success" : "btn-danger")" @onclick="ExecuteConfirm">
+                        @(isClearing ? "Yes, clear it" : "Yes, skip it")
+                    </button>
+                    <button class="btn btn-secondary" @onclick="CancelConfirm">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
 }
 
 @* ── Add Manual Transaction Modal ── *@
@@ -269,6 +307,10 @@ else
     private bool _newIsDeposit;
     private string? _addError;
 
+    // Confirm/skip confirmation
+    private CashFlowTransaction? _confirmingTransaction;
+    private bool _confirmIsClearing;
+
     private record TransactionRow(CashFlowTransaction Transaction, decimal RunningBalance);
     private record MonthGroup(string Label, List<TransactionRow> Rows, decimal Subtotal);
 
@@ -347,6 +389,32 @@ else
     private async Task SkipTransaction(CashFlowTransaction t)
     {
         await CashFlowRepo.DeleteAsync(t.Id, _userId);
+        await LoadAsync();
+    }
+
+    private void BeginConfirm(CashFlowTransaction t, bool isClearing)
+    {
+        _confirmingTransaction = t;
+        _confirmIsClearing = isClearing;
+    }
+
+    private void CancelConfirm()
+    {
+        _confirmingTransaction = null;
+    }
+
+    private async Task ExecuteConfirm()
+    {
+        if (_confirmingTransaction is null) return;
+        var tx = _confirmingTransaction;
+        // When clearing (not skipping) an income entry, advance the income's next payment date
+        if (_confirmIsClearing && tx.Category == TransactionCategory.Income && tx.ReferenceId.HasValue)
+            await IncomeRepo.AdvanceNextPaymentAsync(tx.ReferenceId.Value, _userId);
+        // When clearing a debt payment, advance the debt's last payment date
+        if (_confirmIsClearing && tx.Category == TransactionCategory.DebtPayment && tx.ReferenceId.HasValue)
+            await DebtRepo.UpdateLastPaymentAsync(tx.ReferenceId.Value, _userId, tx.TransactionDate);
+        await CashFlowRepo.DeleteAsync(tx.Id, _userId);
+        CancelConfirm();
         await LoadAsync();
     }
 

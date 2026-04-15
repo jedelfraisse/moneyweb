@@ -19,6 +19,7 @@ public class Bill
 
     // Navigational — populated by join queries
     public string? BankAccountName { get; set; }
+    public DateOnly? LastOccurrenceDueDate { get; set; }   // most recent recorded occurrence
 
     public DateOnly NextDueDate(DateOnly from)
     {
@@ -65,8 +66,9 @@ public class Bill
 public class BillOccurrence
 {
     public int Id { get; set; }
-    public int BillId { get; set; }
+    public int? BillId { get; set; }        // null for one-off occurrences
     public int UserId { get; set; }
+    public string? Name { get; set; }       // used for one-offs when BillId is null
     public DateOnly DueDate { get; set; }
     public decimal EstimatedAmount { get; set; }
     public decimal? ActualAmount { get; set; }
@@ -79,6 +81,10 @@ public class BillOccurrence
 
     // Populated by join queries
     public string? BillName { get; set; }
+
+    /// <summary>Display name — uses BillName from the join for recurring, or Name for one-offs.</summary>
+    public string DisplayName => BillName ?? Name ?? "(unnamed)";
+    public bool IsOneOff => BillId is null;
 }
 
 public enum BillFrequency
