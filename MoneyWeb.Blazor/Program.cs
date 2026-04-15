@@ -71,6 +71,14 @@ app.UseAntiforgery();
 
 app.MapStaticAssets();
 app.MapRazorPages();
+
+// Publisher domain verification for Microsoft identity
+app.MapGet("/.well-known/microsoft-identity-association.json", () =>
+    Results.Json(new
+    {
+        associatedApplications = new[] { new { applicationId = "2c0a4efd-f605-48c4-bd31-62d05a6bbcc1" } }
+    }));
+
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
