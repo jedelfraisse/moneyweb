@@ -8,6 +8,8 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Checkout
@@ -36,11 +38,21 @@ jobs:
 
       - name: Put site offline
         run: |
-          printf '<html><body><h1>Site is updating, please check back shortly.</h1></body></html>' > /tmp/app_offline.htm
-          curl -T /tmp/app_offline.htm ftp://${{ secrets.FTP_SERVER }}/app_offline.htm \
-            --user "${{ secrets.FTP_USERNAME }}:${{ secrets.FTP_PASSWORD }}" \
-            --ftp-create-dirs --silent
+          python3 - << 'PYEOF'
+          import ftplib, io, os
+          content = b'<html><body><h1>Site is updating, please check back shortly.</h1></body></html>'
+          ftp = ftplib.FTP()
+          ftp.connect(os.environ['FTP_SERVER'])
+          ftp.login(os.environ['FTP_USERNAME'], os.environ['FTP_PASSWORD'])
+          ftp.storbinary('STOR app_offline.htm', io.BytesIO(content))
+          ftp.quit()
+          print('app_offline.htm uploaded')
+          PYEOF
           sleep 5
+        env:
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
 
       - name: Deploy via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
@@ -61,6 +73,19 @@ jobs:
       - name: Bring site back online
         if: always()
         run: |
-          curl ftp://${{ secrets.FTP_SERVER }}/ \
-            --user "${{ secrets.FTP_USERNAME }}:${{ secrets.FTP_PASSWORD }}" \
-            -Q "DELE app_offline.htm" --silent || true
+          python3 - << 'PYEOF'
+          import ftplib, os
+          ftp = ftplib.FTP()
+          ftp.connect(os.environ['FTP_SERVER'])
+          ftp.login(os.environ['FTP_USERNAME'], os.environ['FTP_PASSWORD'])
+          try:
+              ftp.delete('app_offline.htm')
+              print('app_offline.htm deleted')
+          except ftplib.error_perm:
+              print('app_offline.htm not found, site already online')
+          ftp.quit()
+          PYEOF
+        env:
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
