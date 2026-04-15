@@ -9,22 +9,9 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
 
-// Entra ID authentication
+// Entra External ID (CIAM) authentication
 builder.Services.AddAuthentication(OpenIdConnectDefaults.AuthenticationScheme)
     .AddMicrosoftIdentityWebApp(builder.Configuration.GetSection("AzureAd"));
-
-// Forward the 'prompt' parameter from AuthenticationProperties to the OIDC protocol message.
-// This lets SignIn pass prompt=select_account so the account picker always appears.
-builder.Services.Configure<OpenIdConnectOptions>(OpenIdConnectDefaults.AuthenticationScheme, options =>
-{
-    var prev = options.Events.OnRedirectToIdentityProvider;
-    options.Events.OnRedirectToIdentityProvider = async ctx =>
-    {
-        if (prev is not null) await prev(ctx);
-        if (ctx.Properties.Parameters.TryGetValue("prompt", out var prompt))
-            ctx.ProtocolMessage.Prompt = prompt?.ToString();
-    };
-});
 
 builder.Services.AddAuthorization();
 builder.Services.AddRazorPages();
