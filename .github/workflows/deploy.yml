@@ -36,7 +36,7 @@ jobs:
 
       - name: Put site offline
         run: |
-          echo "<html><body><h1>Site is updating, please check back shortly.</h1></body></html>" > /tmp/app_offline.htm
+          printf '<html><body><h1>Site is updating, please check back shortly.</h1></body></html>' > /tmp/app_offline.htm
           curl -T /tmp/app_offline.htm ftp://${{ secrets.FTP_SERVER }}/app_offline.htm \
             --user "${{ secrets.FTP_USERNAME }}:${{ secrets.FTP_PASSWORD }}" \
             --ftp-create-dirs --silent
