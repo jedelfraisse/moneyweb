@@ -28,24 +28,28 @@ public class CurrentUserService(IUserRepository userRepo, IUserGroupRepository u
                  ?? principal.FindFirstValue(ClaimTypes.Email)
                  ?? string.Empty;
 
-        // CIAM sends given_name + family_name; workforce AAD sends a single "name" claim
+        // CIAM sends given_name + family_name; only use these — the fallback "name" claim
+        // can be "unknown" when CIAM hasn't populated displayName in its directory.
         var givenName  = principal.FindFirstValue("given_name")  ?? string.Empty;
         var familyName = principal.FindFirstValue("family_name") ?? string.Empty;
-        var name = !string.IsNullOrWhiteSpace(givenName) || !string.IsNullOrWhiteSpace(familyName)
+        var nameFromClaims = (!string.IsNullOrWhiteSpace(givenName) || !string.IsNullOrWhiteSpace(familyName))
             ? $"{givenName} {familyName}".Trim()
-            : principal.FindFirstValue("name")
-           ?? principal.FindFirstValue(ClaimTypes.Name)
-           ?? email;
+            : null; // null means "no reliable name from token"
 
         var user = await userRepo.GetByEntraObjectIdAsync(oid);
         if (user is null)
         {
             // First login — provision with IsApproved = false
+            var displayName = nameFromClaims
+                ?? principal.FindFirstValue("name")
+                ?? principal.FindFirstValue(ClaimTypes.Name)
+                ?? email;
+
             user = new User
             {
                 EntraObjectId = oid,
                 Email = email,
-                DisplayName = name,
+                DisplayName = displayName,
                 IsApproved = false,
                 IsAdmin = false
             };
@@ -58,12 +62,12 @@ public class CurrentUserService(IUserRepository userRepo, IUserGroupRepository u
         }
         else
         {
-            // Keep email and display name fresh on every login
+            // Keep email fresh; only update DisplayName if we have reliable given/family name claims
             bool changed = false;
             if (!string.IsNullOrWhiteSpace(email) && user.Email != email)
             { user.Email = email; changed = true; }
-            if (!string.IsNullOrWhiteSpace(name) && user.DisplayName != name)
-            { user.DisplayName = name; changed = true; }
+            if (nameFromClaims is not null && user.DisplayName != nameFromClaims)
+            { user.DisplayName = nameFromClaims; changed = true; }
             if (changed) await userRepo.UpdateAsync(user);
         }
 
