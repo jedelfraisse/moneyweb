@@ -7,7 +7,7 @@
         <button class="navbar-toggler" type="button" @onclick="ToggleNavMenu" aria-label="Toggle navigation">
             <span class="navbar-toggler-icon"></span>
         </button>
-        <div class="@(_navCollapsed ? "collapse" : "") navbar-collapse">
+        <div class="collapse navbar-collapse @(_navCollapsed ? "" : "show")"
             <AuthorizeView>
                 <Authorized>
                     @if (_isApproved)
