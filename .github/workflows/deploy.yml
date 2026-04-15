@@ -34,6 +34,14 @@ jobs:
             -o ./publish \
             --no-restore
 
+      - name: Put site offline
+        run: |
+          echo "<html><body><h1>Site is updating, please check back shortly.</h1></body></html>" > /tmp/app_offline.htm
+          curl -T /tmp/app_offline.htm ftp://${{ secrets.FTP_SERVER }}/app_offline.htm \
+            --user "${{ secrets.FTP_USERNAME }}:${{ secrets.FTP_PASSWORD }}" \
+            --ftp-create-dirs --silent
+          sleep 5
+
       - name: Deploy via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
@@ -49,3 +57,10 @@ jobs:
             **/appsettings.Development.json
             **/app_offline.htm
             **/_app_offline.htm
+
+      - name: Bring site back online
+        if: always()
+        run: |
+          curl ftp://${{ secrets.FTP_SERVER }}/ \
+            --user "${{ secrets.FTP_USERNAME }}:${{ secrets.FTP_PASSWORD }}" \
+            -Q "DELE app_offline.htm" --silent || true
