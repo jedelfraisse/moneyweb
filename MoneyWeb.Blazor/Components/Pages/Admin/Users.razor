@@ -19,7 +19,15 @@ else
 {
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h1 class="h3 mb-0">User Management</h1>
-        <span class="badge bg-secondary">@_users.Count user(s)</span>
+        <div class="d-flex align-items-center gap-2">
+            <div class="btn-group btn-group-sm" role="group">
+                <button class="btn @(_filter == "all"      ? "btn-dark"            : "btn-outline-secondary")" @onclick='() => _filter = "all"'>All <span class="badge bg-secondary ms-1">@_users.Count</span></button>
+                <button class="btn @(_filter == "approved" ? "btn-success"         : "btn-outline-success")"   @onclick='() => _filter = "approved"'>Approved <span class="badge bg-secondary ms-1">@_users.Count(u => u.IsApproved)</span></button>
+                <button class="btn @(_filter == "pending"  ? "btn-warning text-dark" : "btn-outline-warning")" @onclick='() => _filter = "pending"'>Pending <span class="badge bg-secondary ms-1">@_users.Count(u => !u.IsApproved)</span></button>
+                <button class="btn @(_filter == "admin"    ? "btn-primary"         : "btn-outline-primary")"   @onclick='() => _filter = "admin"'>Admin <span class="badge bg-secondary ms-1">@_users.Count(u => u.IsAdmin)</span></button>
+            </div>
+            <a href="admin/stats" class="btn btn-sm btn-outline-secondary">📊 Stats</a>
+        </div>
     </div>
 
     @if (!string.IsNullOrEmpty(_message))
@@ -43,7 +51,7 @@ else
                 </tr>
             </thead>
             <tbody>
-                @foreach (var user in _users)
+                @foreach (var user in _filteredUsers)
                 {
                     <tr class="@(user.Id == _currentUser.Id ? "table-active" : "")">
                         <td>
@@ -112,6 +120,15 @@ else
     private List<User> _users = [];
     private string? _message;
     private User? _userToDelete;
+    private string _filter = "all";
+
+    private IEnumerable<User> _filteredUsers => _filter switch
+    {
+        "approved" => _users.Where(u => u.IsApproved),
+        "pending"  => _users.Where(u => !u.IsApproved),
+        "admin"    => _users.Where(u => u.IsAdmin),
+        _          => _users
+    };
 
     protected override async Task OnInitializedAsync()
     {
