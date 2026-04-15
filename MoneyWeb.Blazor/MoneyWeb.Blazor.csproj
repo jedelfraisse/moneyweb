@@ -1,6 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <ItemGroup>
+    <Content Include="_app_offline.htm" CopyToPublishDirectory="Always" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\MoneyWeb.Data\MoneyWeb.Data.csproj" />
     <ProjectReference Include="..\MoneyWeb.ServiceDefaults\MoneyWeb.ServiceDefaults.csproj" />
   </ItemGroup>
