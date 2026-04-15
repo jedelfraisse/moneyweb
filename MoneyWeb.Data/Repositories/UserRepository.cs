@@ -40,8 +40,8 @@ public class UserRepository(string connectionString) : IUserRepository
             USING (SELECT @EntraObjectId AS EntraObjectId) AS source
                 ON target.EntraObjectId = source.EntraObjectId
             WHEN NOT MATCHED THEN
-                INSERT (EntraObjectId, Email, DisplayName, PostalCode, IsApproved, IsAdmin, CreatedAt)
-                VALUES (@EntraObjectId, @Email, @DisplayName, @PostalCode, @IsApproved, @IsAdmin, GETUTCDATE());
+                INSERT (EntraObjectId, Email, DisplayName, PostalCode, IsApproved, IsDeclined, DeclineReason, RequestReason, IsAdmin, CreatedAt)
+                VALUES (@EntraObjectId, @Email, @DisplayName, @PostalCode, @IsApproved, @IsDeclined, @DeclineReason, @RequestReason, @IsAdmin, GETUTCDATE());
 
             SELECT Id FROM Users WHERE EntraObjectId = @EntraObjectId;
             """;
@@ -54,7 +54,9 @@ public class UserRepository(string connectionString) : IUserRepository
         await conn.ExecuteAsync("""
             UPDATE Users SET
                 Email = @Email, DisplayName = @DisplayName, PostalCode = @PostalCode,
-                IsApproved = @IsApproved, IsAdmin = @IsAdmin,
+                IsApproved = @IsApproved, IsDeclined = @IsDeclined,
+                DeclineReason = @DeclineReason, RequestReason = @RequestReason,
+                IsAdmin = @IsAdmin,
                 CashFlowHorizonMonths = @CashFlowHorizonMonths,
                 ShowSinkingFunds = @ShowSinkingFunds,
                 ShowLoans = @ShowLoans,

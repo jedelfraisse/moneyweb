@@ -59,10 +59,41 @@ else
                                 <span class="badge bg-success">Free</span>
                                 <span class="text-muted small ms-2">Full access to all features</span>
                             }
+                            else if (_user.IsDeclined)
+                            {
+                                <span class="badge bg-danger">Declined</span>
+                                @if (!string.IsNullOrWhiteSpace(_user.DeclineReason))
+                                {
+                                    <div class="text-muted small mt-1">Reason: @_user.DeclineReason</div>
+                                }
+                                <div class="mt-2">
+                                    @if (!_requestingAgain)
+                                    {
+                                        <button class="btn btn-sm btn-outline-primary" @onclick="() => _requestingAgain = true">
+                                            Request Access Again
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <div>
+                                            <label class="form-label small">Why should you be approved?</label>
+                                            <textarea class="form-control form-control-sm mb-2" rows="2"
+                                                      placeholder="Briefly explain your reason..."
+                                                      @bind="_requestReasonInput"></textarea>
+                                            <button class="btn btn-sm btn-primary me-1" @onclick="SubmitAccessRequest">Send Request</button>
+                                            <button class="btn btn-sm btn-secondary" @onclick="() => _requestingAgain = false">Cancel</button>
+                                        </div>
+                                    }
+                                </div>
+                            }
                             else
                             {
                                 <span class="badge bg-warning text-dark">Pending</span>
                                 <span class="text-muted small ms-2">Awaiting approval — features will unlock once approved</span>
+                                @if (!string.IsNullOrWhiteSpace(_user.RequestReason))
+                                {
+                                    <div class="text-muted small fst-italic mt-1">Your note: @_user.RequestReason</div>
+                                }
                             }
                         </dd>
                     </dl>
@@ -165,6 +196,8 @@ else
     private string? _errorMessage;
     private bool _editingName;
     private string _nameInput = string.Empty;
+    private bool _requestingAgain;
+    private string _requestReasonInput = string.Empty;
 
     protected override async Task OnInitializedAsync()
     {
@@ -175,6 +208,17 @@ else
     {
         _nameInput = _user?.DisplayName ?? string.Empty;
         _editingName = true;
+    }
+
+    private async Task SubmitAccessRequest()
+    {
+        if (_user is null || string.IsNullOrWhiteSpace(_requestReasonInput)) return;
+        _user.IsDeclined = false;
+        _user.DeclineReason = string.Empty;
+        _user.RequestReason = _requestReasonInput.Trim();
+        await UserRepo.UpdateAsync(_user);
+        _requestingAgain = false;
+        _requestReasonInput = string.Empty;
     }
 
     private async Task SaveDisplayName()

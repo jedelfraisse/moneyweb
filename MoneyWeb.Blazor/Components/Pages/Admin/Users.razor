@@ -1,6 +1,9 @@
 @page "/admin/users"
 @rendermode InteractiveServer
 @attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@using MoneyWeb.Blazor.Services
+@using MoneyWeb.Data.Models
+@using MoneyWeb.Data.Repositories.Interfaces
 @inject CurrentUserService CurrentUserSvc
 @inject IUserRepository UserRepo
 @inject NavigationManager Navigation
@@ -21,10 +24,11 @@ else
         <h1 class="h3 mb-0">User Management</h1>
         <div class="d-flex align-items-center gap-2">
             <div class="btn-group btn-group-sm" role="group">
-                <button class="btn @(_filter == "all"      ? "btn-dark"            : "btn-outline-secondary")" @onclick='() => _filter = "all"'>All <span class="badge bg-secondary ms-1">@_users.Count</span></button>
-                <button class="btn @(_filter == "approved" ? "btn-success"         : "btn-outline-success")"   @onclick='() => _filter = "approved"'>Approved <span class="badge bg-secondary ms-1">@_users.Count(u => u.IsApproved)</span></button>
-                <button class="btn @(_filter == "pending"  ? "btn-warning text-dark" : "btn-outline-warning")" @onclick='() => _filter = "pending"'>Pending <span class="badge bg-secondary ms-1">@_users.Count(u => !u.IsApproved)</span></button>
-                <button class="btn @(_filter == "admin"    ? "btn-primary"         : "btn-outline-primary")"   @onclick='() => _filter = "admin"'>Admin <span class="badge bg-secondary ms-1">@_users.Count(u => u.IsAdmin)</span></button>
+                <button class="btn @(_filter == "all"      ? "btn-dark"              : "btn-outline-secondary")" @onclick='() => _filter = "all"'>All <span class="badge bg-secondary ms-1">@_users.Count</span></button>
+                <button class="btn @(_filter == "approved" ? "btn-success"           : "btn-outline-success")"   @onclick='() => _filter = "approved"'>Approved <span class="badge bg-secondary ms-1">@_users.Count(u => u.IsApproved)</span></button>
+                <button class="btn @(_filter == "pending"  ? "btn-warning text-dark" : "btn-outline-warning")"   @onclick='() => _filter = "pending"'>Pending <span class="badge bg-secondary ms-1">@_users.Count(u => !u.IsApproved && !u.IsDeclined)</span></button>
+                <button class="btn @(_filter == "declined" ? "btn-danger"            : "btn-outline-danger")"    @onclick='() => _filter = "declined"'>Declined <span class="badge bg-secondary ms-1">@_users.Count(u => u.IsDeclined)</span></button>
+                <button class="btn @(_filter == "admin"    ? "btn-primary"           : "btn-outline-primary")"   @onclick='() => _filter = "admin"'>Admin <span class="badge bg-secondary ms-1">@_users.Count(u => u.IsAdmin)</span></button>
             </div>
             <a href="admin/stats" class="btn btn-sm btn-outline-secondary">📊 Stats</a>
         </div>
@@ -45,7 +49,7 @@ else
                     <th>Name</th>
                     <th>Email</th>
                     <th>Joined</th>
-                    <th class="text-center">Approved</th>
+                    <th>Status</th>
                     <th class="text-center">Admin</th>
                     <th></th>
                 </tr>
@@ -53,23 +57,39 @@ else
             <tbody>
                 @foreach (var user in _filteredUsers)
                 {
-                    <tr class="@(user.Id == _currentUser.Id ? "table-active" : "")">
+                    <tr class="@(user.Id == _currentUser.Id ? "table-active" : user.IsDeclined ? "table-danger" : !user.IsApproved ? "table-warning" : "")">
                         <td>
                             @user.DisplayName
                             @if (user.Id == _currentUser.Id)
                             {
                                 <span class="badge bg-primary ms-1">You</span>
                             }
+                            @if (!string.IsNullOrWhiteSpace(user.RequestReason))
+                            {
+                                <div class="text-muted small fst-italic mt-1">
+                                    💬 "@user.RequestReason"
+                                </div>
+                            }
                         </td>
-                        <td class="text-muted">@user.Email</td>
-                        <td>@user.CreatedAt.ToString("MMM d, yyyy")</td>
-                        <td class="text-center">
-                            <div class="form-check form-switch d-flex justify-content-center">
-                                <input class="form-check-input" type="checkbox"
-                                       checked="@user.IsApproved"
-                                       disabled="@(user.Id == _currentUser.Id)"
-                                       @onchange="e => ToggleApproved(user, (bool)e.Value!)" />
-                            </div>
+                        <td class="text-muted small">@user.Email</td>
+                        <td class="small">@user.CreatedAt.ToString("MMM d, yyyy")</td>
+                        <td>
+                            @if (user.IsApproved)
+                            {
+                                <span class="badge bg-success">Approved</span>
+                            }
+                            else if (user.IsDeclined)
+                            {
+                                <span class="badge bg-danger">Declined</span>
+                                @if (!string.IsNullOrWhiteSpace(user.DeclineReason))
+                                {
+                                    <div class="text-muted small fst-italic mt-1">@user.DeclineReason</div>
+                                }
+                            }
+                            else
+                            {
+                                <span class="badge bg-warning text-dark">Pending</span>
+                            }
                         </td>
                         <td class="text-center">
                             <div class="form-check form-switch d-flex justify-content-center">
@@ -79,10 +99,28 @@ else
                                        @onchange="e => ToggleAdmin(user, (bool)e.Value!)" />
                             </div>
                         </td>
-                        <td class="text-end">
+                        <td class="text-end" style="white-space:nowrap">
                             @if (user.Id != _currentUser.Id)
                             {
-                                <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(user)">
+                                @if (!user.IsApproved)
+                                {
+                                    <button class="btn btn-sm btn-success me-1" @onclick="() => ApproveUser(user)" title="Approve">
+                                        ✅ Approve
+                                    </button>
+                                }
+                                @if (!user.IsDeclined)
+                                {
+                                    <button class="btn btn-sm btn-outline-danger me-1" @onclick="() => StartDecline(user)" title="Decline">
+                                        ❌ Decline
+                                    </button>
+                                }
+                                @if (user.IsApproved)
+                                {
+                                    <button class="btn btn-sm btn-outline-warning me-1" @onclick="() => RevokeApproval(user)" title="Revoke approval">
+                                        🔒 Revoke
+                                    </button>
+                                }
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(user)" title="Delete all data">
                                     <i class="bi bi-trash"></i>
                                 </button>
                             }
@@ -94,6 +132,32 @@ else
     </div>
 }
 
+@* ── Decline modal ── *@
+@if (_userToDecline is not null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.5)">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Decline Request</h5>
+                    <button type="button" class="btn-close" @onclick="() => _userToDecline = null"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Declining access for <strong>@_userToDecline.DisplayName</strong>.</p>
+                    <label class="form-label">Reason <span class="text-muted small">(shown to the user)</span></label>
+                    <textarea class="form-control" rows="3" placeholder="e.g. Account not yet open to new users."
+                              @bind="_declineReasonInput"></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="() => _userToDecline = null">Cancel</button>
+                    <button class="btn btn-danger" @onclick="DeclineUser">Decline</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ── Delete confirm modal ── *@
 @if (_userToDelete is not null)
 {
     <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.5)">
@@ -120,12 +184,15 @@ else
     private List<User> _users = [];
     private string? _message;
     private User? _userToDelete;
+    private User? _userToDecline;
+    private string _declineReasonInput = string.Empty;
     private string _filter = "all";
 
     private IEnumerable<User> _filteredUsers => _filter switch
     {
         "approved" => _users.Where(u => u.IsApproved),
-        "pending"  => _users.Where(u => !u.IsApproved),
+        "pending"  => _users.Where(u => !u.IsApproved && !u.IsDeclined),
+        "declined" => _users.Where(u => u.IsDeclined),
         "admin"    => _users.Where(u => u.IsAdmin),
         _          => _users
     };
@@ -137,11 +204,38 @@ else
             _users = (await UserRepo.GetAllAsync()).ToList();
     }
 
-    private async Task ToggleApproved(User user, bool value)
+    private async Task ApproveUser(User user)
     {
-        user.IsApproved = value;
+        user.IsApproved = true;
+        user.IsDeclined = false;
+        user.DeclineReason = string.Empty;
         await UserRepo.UpdateAsync(user);
-        _message = $"{user.DisplayName} approval set to {value}.";
+        _message = $"{user.DisplayName} has been approved.";
+    }
+
+    private void StartDecline(User user)
+    {
+        _userToDecline = user;
+        _declineReasonInput = string.Empty;
+    }
+
+    private async Task DeclineUser()
+    {
+        if (_userToDecline is null) return;
+        _userToDecline.IsApproved = false;
+        _userToDecline.IsDeclined = true;
+        _userToDecline.DeclineReason = _declineReasonInput.Trim();
+        await UserRepo.UpdateAsync(_userToDecline);
+        _message = $"{_userToDecline.DisplayName} has been declined.";
+        _userToDecline = null;
+    }
+
+    private async Task RevokeApproval(User user)
+    {
+        user.IsApproved = false;
+        user.IsDeclined = false;
+        await UserRepo.UpdateAsync(user);
+        _message = $"{user.DisplayName}'s approval has been revoked.";
     }
 
     private async Task ToggleAdmin(User user, bool value)
@@ -162,3 +256,4 @@ else
         _userToDelete = null;
     }
 }
+

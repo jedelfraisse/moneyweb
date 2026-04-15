@@ -8,6 +8,9 @@ public class User
     public string DisplayName { get; set; } = string.Empty;
     public string PostalCode { get; set; } = string.Empty;
     public bool IsApproved { get; set; }
+    public bool IsDeclined { get; set; }
+    public string DeclineReason { get; set; } = string.Empty;
+    public string RequestReason { get; set; } = string.Empty;
     public bool IsAdmin { get; set; }
     public int CashFlowHorizonMonths { get; set; } = 12;
     public bool ShowSinkingFunds { get; set; } = true;
