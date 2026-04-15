@@ -92,6 +92,7 @@ else
                             var t = row.Transaction;
                             var rowClass = t.IsSubmitted ? "table-info" :
                                            (t.IsManualOverride && t.Category == TransactionCategory.Bill) ? "table-primary" :
+                                           (t.IsManualOverride && t.Category == TransactionCategory.DebtPayment) ? "table-warning" :
                                            t.IsManualOverride ? "table-secondary" : "";
                             <tr class="@rowClass">
                                 <td class="text-nowrap">
@@ -128,6 +129,10 @@ else
                                     else if (t.IsManualOverride && t.Category == TransactionCategory.Bill)
                                     {
                                         <span class="badge bg-primary">📥 Received</span>
+                                    }
+                                    else if (t.IsManualOverride && t.Category == TransactionCategory.DebtPayment)
+                                    {
+                                        <span class="badge bg-warning text-dark">⏳ Pending Payment</span>
                                     }
                                     else if (t.IsManualOverride)
                                     {
