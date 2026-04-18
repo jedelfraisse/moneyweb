@@ -4,10 +4,11 @@
 <nav class="navbar navbar-expand-lg navbar-dark sticky-top shadow-sm">
     <div class="container-xl">
         <a class="navbar-brand fw-semibold" href="/">💰 MoneyWeb</a>
-        <button class="navbar-toggler" type="button" @onclick="ToggleNavMenu" aria-label="Toggle navigation">
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#main-nav-menu"
+            aria-controls="main-nav-menu" aria-expanded="false" aria-label="Toggle navigation">
             <span class="navbar-toggler-icon"></span>
         </button>
-        <div class="collapse navbar-collapse @(_navCollapsed ? "" : "show")"
+        <div class="collapse navbar-collapse" id="main-nav-menu">
             <AuthorizeView>
                 <Authorized>
                     @if (_isApproved)
@@ -82,7 +83,6 @@
     private bool _isApproved;
     private bool _isAdmin;
     private string _displayName = string.Empty;
-    private bool _navCollapsed = true;
     private bool _showSinkingFunds = true;
     private bool _showLoans = true;
     private bool _showFamily = false;
@@ -101,7 +101,4 @@
         }
     }
 
-    private void ToggleNavMenu() => _navCollapsed = !_navCollapsed;
 }
-
-
