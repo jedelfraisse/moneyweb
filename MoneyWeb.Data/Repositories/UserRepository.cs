@@ -40,8 +40,8 @@ public class UserRepository(string connectionString) : IUserRepository
             USING (SELECT @EntraObjectId AS EntraObjectId) AS source
                 ON target.EntraObjectId = source.EntraObjectId
             WHEN NOT MATCHED THEN
-                INSERT (EntraObjectId, Email, DisplayName, PostalCode, IsApproved, IsDeclined, DeclineReason, RequestReason, IsAdmin, CreatedAt)
-                VALUES (@EntraObjectId, @Email, @DisplayName, @PostalCode, @IsApproved, @IsDeclined, @DeclineReason, @RequestReason, @IsAdmin, GETUTCDATE());
+                INSERT (EntraObjectId, Email, DisplayName, PostalCode, IsApproved, IsDeclined, DeclineReason, RequestReason, IsAdmin, LastLoginClaimsJson, LastLoginAtUtc, CreatedAt)
+                VALUES (@EntraObjectId, @Email, @DisplayName, @PostalCode, @IsApproved, @IsDeclined, @DeclineReason, @RequestReason, @IsAdmin, @LastLoginClaimsJson, @LastLoginAtUtc, GETUTCDATE());
 
             SELECT Id FROM Users WHERE EntraObjectId = @EntraObjectId;
             """;
@@ -60,7 +60,9 @@ public class UserRepository(string connectionString) : IUserRepository
                 CashFlowHorizonMonths = @CashFlowHorizonMonths,
                 ShowSinkingFunds = @ShowSinkingFunds,
                 ShowLoans = @ShowLoans,
-                ShowFamily = @ShowFamily
+                ShowFamily = @ShowFamily,
+                LastLoginClaimsJson = @LastLoginClaimsJson,
+                LastLoginAtUtc = @LastLoginAtUtc
             WHERE Id = @Id
             """, user);
     }

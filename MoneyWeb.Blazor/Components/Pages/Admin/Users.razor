@@ -42,13 +42,19 @@ else
         </div>
     }
 
+    <div class="alert alert-info small">
+        Sign-in diagnostics show the raw claims captured from each user's most recent login. Have the user sign out and back in, then refresh this page to inspect the latest payload.
+    </div>
+
     <div class="table-responsive">
         <table class="table table-hover align-middle">
             <thead class="table-dark">
                 <tr>
                     <th>Name</th>
                     <th>Email</th>
+                    <th>Postal Code</th>
                     <th>Joined</th>
+                    <th>Last Login</th>
                     <th>Status</th>
                     <th class="text-center">Admin</th>
                     <th></th>
@@ -72,7 +78,9 @@ else
                             }
                         </td>
                         <td class="text-muted small">@user.Email</td>
+                        <td class="small">@(string.IsNullOrWhiteSpace(user.PostalCode) ? "—" : user.PostalCode)</td>
                         <td class="small">@user.CreatedAt.ToString("MMM d, yyyy")</td>
+                        <td class="small">@(user.LastLoginAtUtc?.ToLocalTime().ToString("MMM d, yyyy h:mm tt") ?? "—")</td>
                         <td>
                             @if (user.IsApproved)
                             {
@@ -120,12 +128,26 @@ else
                                         🔒 Revoke
                                     </button>
                                 }
-                                <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(user)" title="Delete all data">
-                                    <i class="bi bi-trash"></i>
-                                </button>
-                            }
-                        </td>
-                    </tr>
+                                 <button class="btn btn-sm btn-outline-danger" @onclick="() => ConfirmDelete(user)" title="Delete all data">
+                                     <i class="bi bi-trash"></i>
+                                 </button>
+                             }
+                             <button class="btn btn-sm btn-outline-secondary ms-1" @onclick="() => ToggleDiagnostics(user.Id)" title="Show login diagnostics">
+                                 @(_expandedDiagnostics.Contains(user.Id) ? "Hide Raw Data" : "Raw Data")
+                             </button>
+                         </td>
+                     </tr>
+                    @if (_expandedDiagnostics.Contains(user.Id))
+                    {
+                        <tr class="table-light">
+                            <td colspan="8">
+                                <div class="small text-muted mb-2">
+                                    Raw sign-in claims captured on @(user.LastLoginAtUtc?.ToLocalTime().ToString("f") ?? "the most recent login is not recorded yet").
+                                </div>
+                                <pre class="bg-dark text-light rounded p-3 small mb-0" style="white-space: pre-wrap;">@GetDiagnosticsText(user)</pre>
+                            </td>
+                        </tr>
+                    }
                 }
             </tbody>
         </table>
@@ -187,6 +209,7 @@ else
     private User? _userToDecline;
     private string _declineReasonInput = string.Empty;
     private string _filter = "all";
+    private HashSet<int> _expandedDiagnostics = [];
 
     private IEnumerable<User> _filteredUsers => _filter switch
     {
@@ -244,6 +267,19 @@ else
         await UserRepo.UpdateAsync(user);
         _message = $"{user.DisplayName} admin status set to {value}.";
     }
+
+    private void ToggleDiagnostics(int userId)
+    {
+        if (!_expandedDiagnostics.Add(userId))
+        {
+            _expandedDiagnostics.Remove(userId);
+        }
+    }
+
+    private static string GetDiagnosticsText(User user)
+        => string.IsNullOrWhiteSpace(user.LastLoginClaimsJson)
+            ? "No raw claims have been captured for this user yet."
+            : user.LastLoginClaimsJson;
 
     private void ConfirmDelete(User user) => _userToDelete = user;
 
