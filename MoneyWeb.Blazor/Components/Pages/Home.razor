@@ -14,11 +14,24 @@
 @* ── App description – visible to everyone ── *@
 <h1>MoneyWeb</h1>
 <p class="lead">A personal finance tracker that replaces the spreadsheet.</p>
-<ul>
-    <li><strong>Debts</strong> – Track balances, interest rates, and minimum payments. Uses the avalanche strategy to show the fastest path to payoff.</li>
-    <li><strong>Bills</strong> – Keep a running list of recurring monthly, quarterly, and annual expenses.</li>
-    <li><strong>Loans</strong> – Track money lent to friends or family and monitor repayments.</li>
-    <li><strong>Forecast</strong> – Project cash flow forward so there are no surprises.</li>
+<h2 class="h4">Quick links</h2>
+<ul class="list-group mb-3">
+    <li class="list-group-item"><a href="/bank-accounts">Bank Accounts</a> — Track account balances and view transactions.</li>
+    <li class="list-group-item"><a href="/income">Income</a> — Manage recurring income sources and pay frequencies.</li>
+    <li class="list-group-item"><a href="/debts">Debts</a> — Track balances, APRs, and payoff plans.</li>
+    <li class="list-group-item"><a href="/bills">Bills</a> — Keep recurring monthly, quarterly, and annual expenses organized.</li>
+    <li class="list-group-item"><a href="/sinking-funds">Sinking Funds</a> — Plan and save for irregular future expenses.</li>
+    <li class="list-group-item"><a href="/loans">Loans</a> — Track money lent and incoming repayments.</li>
+    <li class="list-group-item"><a href="/family">Family</a> — Manage family members and shared planning views.</li>
+    <li class="list-group-item"><a href="/sharing">Sharing</a> — Invite and manage sharing permissions.</li>
+    <li class="list-group-item"><a href="/account">Account</a> — Update your profile and feature preferences.</li>
+    @if (_currentUser?.IsAdmin == true)
+    {
+        <li class="list-group-item"><a href="/admin/users">Admin Users</a> — Manage user access and approval.</li>
+        <li class="list-group-item"><a href="/admin/stats">Admin Stats</a> — View application usage and totals.</li>
+    }
+    <li class="list-group-item"><a href="/terms">Terms of Service</a> — Review terms and usage policies.</li>
+    <li class="list-group-item"><a href="/privacy">Privacy Policy</a> — Review data and privacy details.</li>
 </ul>
 @if (!_loading && _currentUser?.IsApproved != true)
 {
