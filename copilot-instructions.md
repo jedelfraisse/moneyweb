@@ -8,8 +8,16 @@ MoneyWeb is part of the delfraisse.com family of applications, designed as a com
 
 The goal is to create a user-friendly platform that empowers individuals to make informed financial decisions and stay on top of their financial commitments, seamlessly integrated into the broader delfraisse.com ecosystem.
 
+
 ## Copilot Instructions
     - When specifying a file, please specify the project name and the file name.
+
+    - **Branching Workflow:**
+        - Before making any code changes, ensure you are on the `main` branch or a temporary feature branch created from `main`.
+        - All development and testing should be performed on `main` or a feature branch (never directly on `release`).
+        - After development is complete and tested, merge changes from `main` (or the feature branch) into the `release` branch to prepare for production deployment.
+        - Only merge into `release` when the code is production-ready.
+        - Hotfixes for production should be made on `release` and then merged back into `main` if needed.
 
 ## Technical Stack
     - **Development**: .NET Aspire
