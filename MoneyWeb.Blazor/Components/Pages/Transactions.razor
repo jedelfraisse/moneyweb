@@ -69,6 +69,9 @@ else
     }
     else
     {
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var todayMarkerInserted = false;
+
         <div class="table-responsive">
             <table class="table table-hover align-middle">
                 <thead class="table-light">
@@ -90,6 +93,18 @@ else
                         @foreach (var row in month.Rows)
                         {
                             var t = row.Transaction;
+                            if (!todayMarkerInserted && t.TransactionDate >= today)
+                            {
+                                todayMarkerInserted = true;
+                                <tr>
+                                    <td colspan="6" class="py-1">
+                                        <div class="d-flex align-items-center gap-2">
+                                            <span class="badge bg-primary">Today</span>
+                                            <div class="border-top border-primary border-2 flex-grow-1"></div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
                             var rowStyle = t.IsSubmitted ? "background-color:#dff0fa;" :
                                            (t.IsManualOverride && t.Category == TransactionCategory.Bill) ? "background-color:#ede9ff;" :
                                            (t.IsManualOverride && t.Category == TransactionCategory.DebtPayment) ? "background-color:#fdebd0;" :
@@ -188,6 +203,17 @@ else
                                 @month.Subtotal.ToString("C")
                             </td>
                             <td colspan="3"></td>
+                        </tr>
+                    }
+                    @if (!todayMarkerInserted)
+                    {
+                        <tr>
+                            <td colspan="6" class="py-1">
+                                <div class="d-flex align-items-center gap-2">
+                                    <span class="badge bg-primary">Today</span>
+                                    <div class="border-top border-primary border-2 flex-grow-1"></div>
+                                </div>
+                            </td>
                         </tr>
                     }
                 </tbody>
@@ -348,7 +374,9 @@ else
         var from = new DateOnly(today.Year, today.Month, 1);
         var to = today.AddMonths(60);
         var raw = (await CashFlowRepo.GetForAccountAsync(_bankAccountId, _userId, from, to))
-            .OrderBy(t => t.TransactionDate).ThenBy(t => t.Id)
+            .OrderBy(t => t.TransactionDate)
+            .ThenBy(t => t.Amount >= 0 ? 0 : 1)
+            .ThenBy(t => t.Id)
             .ToList();
 
         decimal running = _account!.CurrentBalance;
