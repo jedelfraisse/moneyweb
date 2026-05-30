@@ -117,6 +117,20 @@ else
                 </div>
             </div>
         </div>
+        @if (_creditCardCount > 0)
+        {
+            <div class="col-sm-6 col-lg-3">
+                <div class="card h-100 @(_avgCreditUsage >= 0.9m ? "border-danger" : _avgCreditUsage >= 0.3m ? "border-warning" : "border-success")">
+                    <div class="card-body">
+                        <h6 class="card-subtitle mb-1 text-muted">Credit Card Usage</h6>
+                        <p class="card-text fs-4 @(_avgCreditUsage >= 0.9m ? "text-danger" : _avgCreditUsage >= 0.3m ? "text-warning" : "text-success") fw-bold">
+                            @((_avgCreditUsage * 100m).ToString("F1"))%
+                        </p>
+                        <p class="card-text text-muted small">@_creditCardCount card(s) · @_totalCreditBalance.ToString("C") of @_totalCreditLimit.ToString("C")</p>
+                    </div>
+                </div>
+            </div>
+        }
     </div>
 
     @* ── Secondary info row ── *@
@@ -169,6 +183,12 @@ else
     private decimal _totalDebtBalance;
     private decimal _totalMinPayments;
 
+    // Credit card usage summary
+    private int _creditCardCount;
+    private decimal _totalCreditBalance;
+    private decimal _totalCreditLimit;
+    private decimal _avgCreditUsage;
+
     // Bill summary
     private int _billCount;
     private decimal _monthlyBillTotal;
@@ -198,6 +218,14 @@ else
             _debtCount = debts.Count;
             _totalDebtBalance = debts.Sum(d => d.Balance);
             _totalMinPayments = debts.Sum(d => d.MinimumPayment);
+
+            var creditCards = debts.Where(d =>
+                (d.DebtType == DebtType.CreditCard || d.DebtType == DebtType.LineOfCredit)
+                && d.CreditLimit.HasValue && d.CreditLimit.Value > 0).ToList();
+            _creditCardCount = creditCards.Count;
+            _totalCreditBalance = creditCards.Sum(d => d.Balance);
+            _totalCreditLimit = creditCards.Sum(d => d.CreditLimit!.Value);
+            _avgCreditUsage = _totalCreditLimit > 0 ? _totalCreditBalance / _totalCreditLimit : 0m;
 
             var bills = (await BillRepository.GetAllAsync(_currentUser.Id, activeOnly: true)).ToList();
             _billCount = bills.Count;
