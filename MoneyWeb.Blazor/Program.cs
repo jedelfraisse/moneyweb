@@ -1,34 +1,53 @@
-using Microsoft.AspNetCore.Authentication.OpenIdConnect;
-using Microsoft.Identity.Web;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using MoneyWeb.Data;
+using MoneyWeb.Blazor.Auth;
 using MoneyWeb.Blazor.Components;
 using MoneyWeb.Blazor.Services;
+using MoneyWeb.Blazor.Services.Email;
 using Sqids;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
 
-// Entra External ID (CIAM) authentication
-builder.Services.AddAuthentication(OpenIdConnectDefaults.AuthenticationScheme)
-    .AddMicrosoftIdentityWebApp(builder.Configuration.GetSection("AzureAd"));
-
-builder.Services.Configure<OpenIdConnectOptions>(OpenIdConnectDefaults.AuthenticationScheme, options =>
-{
-    options.Events.OnSignedOutCallbackRedirect = ctx =>
+// Self-hosted passwordless authentication (magic link + one-time code) with a
+// persistent 30-day sliding-expiration cookie — replaces Entra External ID (CIAM).
+builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie(CookieAuthenticationDefaults.AuthenticationScheme, options =>
     {
-        ctx.Response.Redirect("/");
-        ctx.HandleResponse();
-        return Task.CompletedTask;
-    };
-});
+        options.LoginPath = "/login";
+        options.LogoutPath = "/auth/logout";
+        options.ExpireTimeSpan = TimeSpan.FromDays(30);
+        options.SlidingExpiration = true;
+        options.Cookie.Name = "MoneyWeb.Auth";
+        options.Cookie.HttpOnly = true;
+        options.Cookie.SameSite = SameSiteMode.Lax;
+        // Dev's default launch profile is plain HTTP (localhost:5233) — a Secure-always
+        // cookie wouldn't be set there. Relax only in Development.
+        options.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
+            ? CookieSecurePolicy.SameAsRequest
+            : CookieSecurePolicy.Always;
+    });
 
 builder.Services.AddAuthorization();
-builder.Services.AddRazorPages();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<CurrentUserService>();
+builder.Services.AddScoped<PasswordlessAuthService>();
 builder.Services.AddScoped<LoanInterestService>();
 builder.Services.AddHostedService<InterestAccrualBackgroundService>();
+
+// Email — SMTP when configured (e.g. a local dev catcher like smtp4dev, or a real relay in
+// production); otherwise falls back to logging the code/link to the console + /dev/sent-mail.
+// See MoneyWeb.Blazor/Services/Email/.
+builder.Services.AddSingleton<DevMailbox>();
+if (!string.IsNullOrWhiteSpace(builder.Configuration["Smtp:Host"]))
+{
+    builder.Services.AddSingleton<IEmailSender, SmtpEmailSender>();
+}
+else
+{
+    builder.Services.AddSingleton<IEmailSender, DevEmailSender>();
+}
 
 // Sqids — obfuscates sequential integer IDs in URLs
 builder.Services.AddSingleton(new SqidsEncoder<int>(new SqidsOptions
@@ -60,6 +79,8 @@ if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
     app.UseHsts();
+    if (string.IsNullOrWhiteSpace(app.Configuration["Smtp:Host"]))
+        app.Logger.LogWarning("No Smtp:Host configured outside Development — login emails will only be logged, not sent. Configure Smtp:Host/Port/From before serving real users.");
 }
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
 app.UseHttpsRedirection();
@@ -70,18 +91,9 @@ app.UseAuthorization();
 app.UseAntiforgery();
 
 app.MapStaticAssets();
-app.MapRazorPages();
-
-// Publisher domain verification for Microsoft identity
-app.MapGet("/.well-known/microsoft-identity-association.json", () =>
-    Results.Json(new
-    {
-        associatedApplications = new[] { new { applicationId = "2c0a4efd-f605-48c4-bd31-62d05a6bbcc1" } }
-    }));
+app.MapAuthEndpoints();
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
 app.Run();
-
-

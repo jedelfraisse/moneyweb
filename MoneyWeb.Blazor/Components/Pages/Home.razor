@@ -14,31 +14,33 @@
 @* ── App description – visible to everyone ── *@
 <h1>MoneyWeb</h1>
 <p class="lead">A personal finance tracker that replaces the spreadsheet.</p>
-<h2 class="h4">Quick links</h2>
-<ul class="list-group mb-3">
-    <li class="list-group-item"><a href="/bank-accounts">Bank Accounts</a> — Track account balances and view transactions.</li>
-    <li class="list-group-item"><a href="/income">Income</a> — Manage recurring income sources and pay frequencies.</li>
-    <li class="list-group-item"><a href="/debts">Debts</a> — Track balances, APRs, and payoff plans.</li>
-    <li class="list-group-item"><a href="/bills">Bills</a> — Keep recurring monthly, quarterly, and annual expenses organized.</li>
-    <li class="list-group-item"><a href="/sinking-funds">Sinking Funds</a> — Plan and save for irregular future expenses.</li>
-    <li class="list-group-item"><a href="/loans">Loans</a> — Track money lent and incoming repayments.</li>
-    <li class="list-group-item"><a href="/family">Family</a> — Manage family members and shared planning views.</li>
-    <li class="list-group-item"><a href="/sharing">Sharing</a> — Invite and manage sharing permissions.</li>
-    <li class="list-group-item"><a href="/account">Account</a> — Update your profile and feature preferences.</li>
-    @if (_currentUser?.IsAdmin == true)
-    {
-        <li class="list-group-item"><a href="/admin/users">Admin Users</a> — Manage user access and approval.</li>
-        <li class="list-group-item"><a href="/admin/stats">Admin Stats</a> — View application usage and totals.</li>
-    }
-    <li class="list-group-item"><a href="/terms">Terms of Service</a> — Review terms and usage policies.</li>
-    <li class="list-group-item"><a href="/privacy">Privacy Policy</a> — Review data and privacy details.</li>
-</ul>
-@if (!_loading && _currentUser?.IsApproved != true)
-{
-    <p><em>MoneyWeb is currently invite-only. Access is granted by an administrator after your account is created.</em></p>
-}
 
-<hr />
+@{
+    // Shared template so the same Quick Links markup can be positioned above the dashboard
+    // (anonymous/pending users have no dashboard to show) or below it (approved users —
+    // dashboard is the primary view immediately after login, per issue #24).
+    RenderFragment quickLinks = @<text>
+        <h2 class="h4">Quick links</h2>
+        <ul class="list-group mb-3">
+            <li class="list-group-item"><a href="/bank-accounts">Bank Accounts</a> — Track account balances and view transactions.</li>
+            <li class="list-group-item"><a href="/income">Income</a> — Manage recurring income sources and pay frequencies.</li>
+            <li class="list-group-item"><a href="/debts">Debts</a> — Track balances, APRs, and payoff plans.</li>
+            <li class="list-group-item"><a href="/bills">Bills</a> — Keep recurring monthly, quarterly, and annual expenses organized.</li>
+            <li class="list-group-item"><a href="/sinking-funds">Sinking Funds</a> — Plan and save for irregular future expenses.</li>
+            <li class="list-group-item"><a href="/loans">Loans</a> — Track money lent and incoming repayments.</li>
+            <li class="list-group-item"><a href="/family">Family</a> — Manage family members and shared planning views.</li>
+            <li class="list-group-item"><a href="/sharing">Sharing</a> — Invite and manage sharing permissions.</li>
+            <li class="list-group-item"><a href="/account">Account</a> — Update your profile and feature preferences.</li>
+            @if (_currentUser?.IsAdmin == true)
+            {
+                <li class="list-group-item"><a href="/admin/users">Admin Users</a> — Manage user access and approval.</li>
+                <li class="list-group-item"><a href="/admin/stats">Admin Stats</a> — View application usage and totals.</li>
+            }
+            <li class="list-group-item"><a href="/terms">Terms of Service</a> — Review terms and usage policies.</li>
+            <li class="list-group-item"><a href="/privacy">Privacy Policy</a> — Review data and privacy details.</li>
+        </ul>
+    </text>;
+}
 
 @if (_loading)
 {
@@ -47,18 +49,24 @@
 else if (_currentUser is null)
 {
     @* Not signed in *@
+    @quickLinks
+    <p><em>MoneyWeb is currently invite-only. Access is granted by an administrator after your account is created.</em></p>
+    <hr />
     <p>
-        <a href="MicrosoftIdentity/Account/SignIn" class="btn btn-primary">Sign in to get started</a>
+        <a href="/login" class="btn btn-primary">Sign in to get started</a>
     </p>
 }
 else if (!_currentUser.IsApproved)
 {
     @* Signed in but awaiting approval *@
+    @quickLinks
+    <p><em>MoneyWeb is currently invite-only. Access is granted by an administrator after your account is created.</em></p>
+    <hr />
     <div class="alert alert-info">
         <strong>Access pending.</strong> Your account has been created and is awaiting administrator approval.
         You'll have full access once approved.
         <br /><br />
-        <a href="MicrosoftIdentity/Account/SignOut" class="btn btn-sm btn-outline-secondary">Sign out</a>
+        <a href="/auth/logout" class="btn btn-sm btn-outline-secondary">Sign out</a>
     </div>
 }
 else
@@ -172,6 +180,10 @@ else
             </div>
         </div>
     </div>
+
+    <hr class="my-4" />
+
+    @quickLinks
 }
 
 @code {

@@ -1,0 +1,58 @@
+@page "/dev/sent-mail"
+@using MoneyWeb.Blazor.Services.Email
+@inject DevMailbox Mailbox
+@inject IWebHostEnvironment Env
+@inject NavigationManager Navigation
+
+@code {
+    private IReadOnlyList<DevSentEmail> _recent = Array.Empty<DevSentEmail>();
+
+    protected override void OnInitialized()
+    {
+        if (!Env.IsDevelopment())
+        {
+            Navigation.NavigateTo("/not-found");
+            return;
+        }
+        _recent = Mailbox.GetRecent();
+    }
+}
+
+@if (Env.IsDevelopment())
+{
+    <PageTitle>Dev Sent Mail – MoneyWeb</PageTitle>
+
+    <h1 class="h3 mb-1">Dev Sent Mail</h1>
+    <p class="text-muted">Local-only viewer for login emails "sent" by DevEmailSender — no real email provider is configured yet.</p>
+
+    @if (!_recent.Any())
+    {
+        <div class="alert alert-info">Nothing sent yet. Request a login code from <a href="/login">/login</a> to see it here.</div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th>Sent</th>
+                        <th>To</th>
+                        <th>Code</th>
+                        <th>Magic link</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var m in _recent)
+                    {
+                        <tr>
+                            <td class="text-nowrap">@m.SentAtUtc.ToLocalTime().ToString("HH:mm:ss")</td>
+                            <td>@m.ToEmail</td>
+                            <td><code class="fs-5">@m.Code</code></td>
+                            <td><a href="@m.MagicLinkUrl">Open link</a></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}
