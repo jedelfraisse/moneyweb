@@ -3,7 +3,7 @@ namespace MoneyWeb.Data.Models;
 public class User
 {
     public int Id { get; set; }
-    public string EntraObjectId { get; set; } = string.Empty;
+    public string? EntraObjectId { get; set; }
     public string Email { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
     public string PostalCode { get; set; } = string.Empty;

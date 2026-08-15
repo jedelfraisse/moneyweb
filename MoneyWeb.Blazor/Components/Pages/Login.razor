@@ -1,0 +1,93 @@
+@page "/login"
+@page "/login/verify"
+@using MoneyWeb.Data.Repositories.Interfaces
+@inject SqidsEncoder<int> Sqids
+@inject ILoginTokenRepository LoginTokenRepo
+
+<PageTitle>Sign In – MoneyWeb</PageTitle>
+
+<div class="row justify-content-center">
+    <div class="col-md-5">
+        @if (Rid is null)
+        {
+            <h1 class="h3 mb-3">Sign In</h1>
+            <p class="text-muted">Enter your email and we'll send you a one-time code and a sign-in link.</p>
+            @if (Error is not null)
+            {
+                <div class="alert alert-danger">@ErrorMessage(Error)</div>
+            }
+            <form method="post" action="/auth/login">
+                <input type="hidden" name="returnUrl" value="@ReturnUrl" />
+                <div class="mb-3">
+                    <label class="form-label">Email</label>
+                    <input type="email" name="email" class="form-control" required autofocus />
+                </div>
+                <button type="submit" class="btn btn-primary">Send code</button>
+            </form>
+        }
+        else
+        {
+            <h1 class="h3 mb-3">Check your email</h1>
+            <p class="text-muted">
+                We sent a 6-digit code and a sign-in link to @MaskedEmail.
+                Enter the code below, or click the link in the email — whichever's easier.
+            </p>
+            @if (Error is not null)
+            {
+                <div class="alert alert-danger">@ErrorMessage(Error)</div>
+            }
+            <form method="post" action="/auth/verify">
+                <input type="hidden" name="rid" value="@Rid" />
+                <input type="hidden" name="returnUrl" value="@ReturnUrl" />
+                <div class="mb-3">
+                    <label class="form-label">6-digit code</label>
+                    <input type="text" name="code" class="form-control" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required autofocus />
+                </div>
+                <button type="submit" class="btn btn-primary">Verify &amp; sign in</button>
+            </form>
+            <form method="post" action="/auth/login" class="mt-2">
+                <input type="hidden" name="email" value="@Email" />
+                <input type="hidden" name="returnUrl" value="@ReturnUrl" />
+                <button type="submit" class="btn btn-link btn-sm px-0">Resend code</button>
+            </form>
+        }
+    </div>
+</div>
+
+@code {
+    [SupplyParameterFromQuery] public string? Rid { get; set; }
+    [SupplyParameterFromQuery] public string? Error { get; set; }
+    [SupplyParameterFromQuery] public string? ReturnUrl { get; set; }
+
+    private string? Email;
+    private string MaskedEmail = "your email";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Rid is not null)
+        {
+            var id = Sqids.Decode(Rid).FirstOrDefault();
+            var token = await LoginTokenRepo.GetActiveByIdAsync(id);
+            if (token is not null)
+            {
+                Email = token.Email;
+                MaskedEmail = MaskEmail(token.Email);
+            }
+        }
+    }
+
+    private static string MaskEmail(string email)
+    {
+        var at = email.IndexOf('@');
+        return at <= 1 ? email : $"{email[0]}***{email[(at - 1)..]}";
+    }
+
+    private static string ErrorMessage(string code) => code switch
+    {
+        "invalid_email" => "Enter a valid email address.",
+        "invalid_code" => "That code didn't match. Try again.",
+        "expired" => "That code or link has expired. Request a new one below.",
+        "too_many_attempts" => "Too many incorrect attempts. Request a new code.",
+        _ => "Something went wrong. Please try again."
+    };
+}

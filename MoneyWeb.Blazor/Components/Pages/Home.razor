@@ -48,7 +48,7 @@ else if (_currentUser is null)
 {
     @* Not signed in *@
     <p>
-        <a href="MicrosoftIdentity/Account/SignIn" class="btn btn-primary">Sign in to get started</a>
+        <a href="/login" class="btn btn-primary">Sign in to get started</a>
     </p>
 }
 else if (!_currentUser.IsApproved)
@@ -58,7 +58,7 @@ else if (!_currentUser.IsApproved)
         <strong>Access pending.</strong> Your account has been created and is awaiting administrator approval.
         You'll have full access once approved.
         <br /><br />
-        <a href="MicrosoftIdentity/Account/SignOut" class="btn btn-sm btn-outline-secondary">Sign out</a>
+        <a href="/auth/logout" class="btn btn-sm btn-outline-secondary">Sign out</a>
     </div>
 }
 else
