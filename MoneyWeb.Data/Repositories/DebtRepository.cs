@@ -33,10 +33,14 @@ public class DebtRepository(string connectionString) : IDebtRepository
         using var conn = Connect();
         var sql = """
             INSERT INTO Debts (UserId, GroupId, GroupSortOrder, BankAccountId, Name, Lender, Balance, InterestRate, MinimumPayment,
-                               IsFixedPayment, PaymentDayOfMonth, LastPaymentDate, PaymentMethod, PayoffDate, IsActive, CreatedAt, UpdatedAt)
+                               IsFixedPayment, PaymentDayOfMonth, LastPaymentDate, PaymentMethod, PayoffDate, IsActive,
+                               PromoInterestRate, PromoExpirationDate, PromoStartDate, PromoOriginalBalance, PromoExpirationBehavior,
+                               CreatedAt, UpdatedAt)
             OUTPUT INSERTED.Id
             VALUES (@UserId, @GroupId, @GroupSortOrder, @BankAccountId, @Name, @Lender, @Balance, @InterestRate, @MinimumPayment,
-                    @IsFixedPayment, @PaymentDayOfMonth, @LastPaymentDate, @PaymentMethod, @PayoffDate, @IsActive, GETUTCDATE(), GETUTCDATE())
+                    @IsFixedPayment, @PaymentDayOfMonth, @LastPaymentDate, @PaymentMethod, @PayoffDate, @IsActive,
+                    @PromoInterestRate, @PromoExpirationDate, @PromoStartDate, @PromoOriginalBalance, @PromoExpirationBehavior,
+                    GETUTCDATE(), GETUTCDATE())
             """;
         return await conn.ExecuteScalarAsync<int>(sql, debt);
     }
@@ -52,7 +56,11 @@ public class DebtRepository(string connectionString) : IDebtRepository
                 IsFixedPayment = @IsFixedPayment,
                 PaymentDayOfMonth = @PaymentDayOfMonth, LastPaymentDate = @LastPaymentDate,
                 PaymentMethod = @PaymentMethod,
-                PayoffDate = @PayoffDate, IsActive = @IsActive, UpdatedAt = GETUTCDATE()
+                PayoffDate = @PayoffDate, IsActive = @IsActive,
+                PromoInterestRate = @PromoInterestRate, PromoExpirationDate = @PromoExpirationDate,
+                PromoStartDate = @PromoStartDate, PromoOriginalBalance = @PromoOriginalBalance,
+                PromoExpirationBehavior = @PromoExpirationBehavior,
+                UpdatedAt = GETUTCDATE()
             WHERE Id = @Id AND UserId = @UserId
             """;
         await conn.ExecuteAsync(sql, debt);

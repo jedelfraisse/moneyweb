@@ -47,7 +47,9 @@ public class DebtGroupRepository(string connectionString) : IDebtGroupRepository
                    d.Id, d.UserId, d.GroupId, d.GroupSortOrder, d.Name, d.Lender,
                    d.Balance, d.InterestRate, d.MinimumPayment, d.IsFixedPayment,
                    d.PaymentDayOfMonth, d.LastPaymentDate, d.PaymentMethod,
-                   d.PayoffDate, d.IsActive, d.CreatedAt, d.UpdatedAt
+                   d.PayoffDate, d.IsActive,
+                   d.PromoInterestRate, d.PromoExpirationDate, d.PromoStartDate, d.PromoOriginalBalance, d.PromoExpirationBehavior,
+                   d.CreatedAt, d.UpdatedAt
             FROM DebtGroups g
             LEFT JOIN BankAccounts ba ON ba.Id = g.BankAccountId
             LEFT JOIN Debts d ON d.GroupId = g.Id AND d.IsActive = 1

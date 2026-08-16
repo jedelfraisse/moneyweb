@@ -6,6 +6,19 @@ public enum DebtPaymentMethod
     Manual = 1
 }
 
+public enum PromoExpirationBehavior
+{
+    /// <summary>Interest simply starts accruing at InterestRate from the expiration date forward. Most bank cards.</summary>
+    RevertToStandardRate = 0,
+
+    /// <summary>
+    /// If any balance remains at expiration, interest is retroactively charged (as a one-time lump sum) on
+    /// PromoOriginalBalance at InterestRate for the promo's duration — typical of store-card "no interest if
+    /// paid in full within N months" offers.
+    /// </summary>
+    DeferredInterest = 1
+}
+
 public class Debt
 {
     public int Id { get; set; }
@@ -28,6 +41,23 @@ public class Debt
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 
+    /// <summary>Promotional/introductory rate (stored as fraction, e.g. 0 = 0% APR). Null when no promo is set.</summary>
+    public decimal? PromoInterestRate { get; set; }
+
+    /// <summary>Last date the promo rate applies. Null when no promo is set.</summary>
+    public DateOnly? PromoExpirationDate { get; set; }
+
+    /// <summary>Date the promo rate started. Defaults to today when a promo is first entered if left blank.</summary>
+    public DateOnly? PromoStartDate { get; set; }
+
+    /// <summary>
+    /// Balance the promo terms applied to, captured when the promo was entered — the base for a
+    /// DeferredInterest lump-sum charge. Defaults to the current Balance if not specified.
+    /// </summary>
+    public decimal? PromoOriginalBalance { get; set; }
+
+    public PromoExpirationBehavior PromoExpirationBehavior { get; set; } = PromoExpirationBehavior.RevertToStandardRate;
+
     // Navigation — fees loaded separately by repository
     public List<DebtFee> Fees { get; set; } = [];
     public BankAccount? BankAccount { get; set; }
@@ -38,11 +68,40 @@ public class Debt
     /// <summary>Total monthly outflow: minimum payment + all active fees.</summary>
     public decimal TotalMonthlyPayment => MinimumPayment + TotalMonthlyFees;
 
-    /// <summary>Monthly interest accrued on the current balance.</summary>
-    public decimal MonthlyInterest => Math.Round(Balance * InterestRate / 12m, 2);
+    /// <summary>True while a promo rate is configured and today falls on/before its expiration date.</summary>
+    public bool HasActivePromo(DateOnly asOf) =>
+        PromoInterestRate.HasValue && PromoExpirationDate.HasValue && asOf <= PromoExpirationDate.Value;
+
+    /// <summary>The rate that actually applies as of <paramref name="asOf"/> — the promo rate while active, InterestRate otherwise.</summary>
+    public decimal EffectiveInterestRate(DateOnly asOf) => HasActivePromo(asOf) ? PromoInterestRate!.Value : InterestRate;
+
+    /// <summary>True when a promo is active and expires within the next <paramref name="horizonMonths"/> months of <paramref name="asOf"/>.</summary>
+    public bool IsPromoUrgent(DateOnly asOf, int horizonMonths) =>
+        HasActivePromo(asOf) && PromoExpirationDate!.Value <= asOf.AddMonths(horizonMonths);
+
+    /// <summary>
+    /// Estimated deferred-interest lump sum charged at promo expiration if the balance isn't cleared in time —
+    /// only meaningful when PromoExpirationBehavior is DeferredInterest. Approximated as simple interest on
+    /// PromoOriginalBalance (or current Balance if unset) at InterestRate for the promo's duration.
+    /// </summary>
+    public decimal EstimatedDeferredInterest
+    {
+        get
+        {
+            if (PromoExpirationBehavior != PromoExpirationBehavior.DeferredInterest
+                || !PromoExpirationDate.HasValue || !PromoStartDate.HasValue)
+                return 0m;
+            var promoBalance = PromoOriginalBalance ?? Balance;
+            var months = Math.Max(0, PromoExpirationDate.Value.DayNumber - PromoStartDate.Value.DayNumber) / 30.44m;
+            return Math.Round(promoBalance * InterestRate * months / 12m, 2);
+        }
+    }
+
+    /// <summary>Monthly interest accrued on the current balance, using today's effective rate (promo if active).</summary>
+    public decimal MonthlyInterest => Math.Round(Balance * EffectiveInterestRate(DateOnly.FromDateTime(DateTime.Today)) / 12m, 2);
 
     /// <summary>True when the minimum payment doesn't cover monthly interest — the balance will grow indefinitely.</summary>
-    public bool IsMinBelowInterest => Balance > 0 && InterestRate > 0 && MinimumPayment < MonthlyInterest;
+    public bool IsMinBelowInterest => Balance > 0 && EffectiveInterestRate(DateOnly.FromDateTime(DateTime.Today)) > 0 && MinimumPayment < MonthlyInterest;
 
     /// <summary>
     /// Next upcoming occurrence of PaymentDayOfMonth strictly after the later of today or LastPaymentDate.
