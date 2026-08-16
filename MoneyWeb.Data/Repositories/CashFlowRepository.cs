@@ -240,4 +240,25 @@ public class CashFlowRepository(string connectionString) : ICashFlowRepository
               AND TransactionDate = @Date
             """, new { ReferenceId = referenceId, UserId = userId, Category = (int)category, Date = date, SubmittedDate = submittedDate });
     }
+
+    public async Task DeleteAllProjectedForSourceAsync(int referenceId, int userId, TransactionCategory category)
+    {
+        using var conn = Connect();
+        await conn.ExecuteAsync("""
+            DELETE FROM CashFlowTransactions
+            WHERE ReferenceId = @ReferenceId AND UserId = @UserId
+              AND Category = @Category AND IsProjected = 1
+            """, new { ReferenceId = referenceId, UserId = userId, Category = (int)category });
+    }
+
+    public async Task DetachSourceKeepAsManualAsync(int referenceId, int userId, TransactionCategory category)
+    {
+        using var conn = Connect();
+        await conn.ExecuteAsync("""
+            UPDATE CashFlowTransactions
+            SET ReferenceId = NULL, IsManualOverride = 1, UpdatedAt = GETUTCDATE()
+            WHERE ReferenceId = @ReferenceId AND UserId = @UserId
+              AND Category = @Category AND IsProjected = 1
+            """, new { ReferenceId = referenceId, UserId = userId, Category = (int)category });
+    }
 }

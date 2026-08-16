@@ -60,4 +60,18 @@ public interface ICashFlowRepository
 
     /// <summary>Mark a bill occurrence's CF transaction as submitted, matched by source+date rather than by ID.</summary>
     Task MarkSubmittedForSourceOnDateAsync(int referenceId, int userId, TransactionCategory category, DateOnly date, DateOnly submittedDate);
+
+    /// <summary>
+    /// Delete every still-upcoming (IsProjected) transaction for a source, regardless of manual-override —
+    /// used when the source itself (e.g. a Bill) is being deleted and its future transactions should go
+    /// with it. Already-cleared history (IsProjected = false) is left untouched.
+    /// </summary>
+    Task DeleteAllProjectedForSourceAsync(int referenceId, int userId, TransactionCategory category);
+
+    /// <summary>
+    /// Detach every still-upcoming transaction for a source from that source (ReferenceId = NULL) and mark
+    /// it a manual override, so it survives as a standalone entry instead of dangling on a deleted source —
+    /// used when the source (e.g. a Bill) is deleted but its future transactions should be kept.
+    /// </summary>
+    Task DetachSourceKeepAsManualAsync(int referenceId, int userId, TransactionCategory category);
 }
