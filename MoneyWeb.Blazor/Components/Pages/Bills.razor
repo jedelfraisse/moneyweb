@@ -503,11 +503,19 @@ else
                     <button type="button" class="btn-close" @onclick="() => _deletingBill = null"></button>
                 </div>
                 <div class="modal-body">
-                    Delete <strong>@_deletingBill.Name</strong> and all its occurrences?
+                    <p>Delete <strong>@_deletingBill.Name</strong>? Its recorded occurrence history is removed either way.</p>
+                    <p class="text-muted small mb-0">
+                        What should happen to its <strong>upcoming</strong> transactions on the Transactions page?
+                    </p>
                 </div>
-                <div class="modal-footer">
-                    <button class="btn btn-secondary" @onclick="() => _deletingBill = null">Cancel</button>
-                    <button class="btn btn-danger" @onclick="DeleteBillConfirmed">Delete</button>
+                <div class="modal-footer flex-column align-items-stretch gap-2">
+                    <button class="btn btn-outline-secondary w-100" @onclick="() => DeleteBillConfirmed(deleteFutureTransactions: true)">
+                        Delete them too
+                    </button>
+                    <button class="btn btn-outline-primary w-100" @onclick="() => DeleteBillConfirmed(deleteFutureTransactions: false)">
+                        Keep them (as standalone manual transactions)
+                    </button>
+                    <button class="btn btn-secondary w-100" @onclick="() => _deletingBill = null">Cancel</button>
                 </div>
             </div>
         </div>
@@ -669,11 +677,19 @@ else
 
     private void ConfirmDelete(Bill bill) { _deletingBill = bill; }
 
-    private async Task DeleteBillConfirmed()
+    private async Task DeleteBillConfirmed(bool deleteFutureTransactions)
     {
         if (_deletingBill is null) return;
         var user = await CurrentUserService.GetCurrentUserAsync();
         if (user is null) return;
+
+        // Resolve the bill's still-upcoming Transactions-page entries before the bill itself is gone —
+        // either drop them with it, or detach + keep them as standalone manual entries.
+        if (deleteFutureTransactions)
+            await CashFlowRepo.DeleteAllProjectedForSourceAsync(_deletingBill.Id, user.Id, TransactionCategory.Bill);
+        else
+            await CashFlowRepo.DetachSourceKeepAsManualAsync(_deletingBill.Id, user.Id, TransactionCategory.Bill);
+
         await BillRepo.DeleteAsync(_deletingBill.Id, user.Id);
         _occurrences.Remove(_deletingBill.Id);
         _expanded.Remove(_deletingBill.Id);
