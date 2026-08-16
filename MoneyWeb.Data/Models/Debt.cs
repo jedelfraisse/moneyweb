@@ -97,6 +97,34 @@ public class Debt
     public bool IsPromoUrgent(DateOnly asOf, int horizonMonths) =>
         HasActivePromo(asOf) && PromoExpirationDate!.Value <= asOf.AddMonths(horizonMonths);
 
+    /// <summary>Number of remaining monthly payment cycles that still fall at the promo rate, as of <paramref name="asOf"/>.</summary>
+    public int PromoMonthsRemaining(DateOnly asOf)
+    {
+        if (!HasActivePromo(asOf)) return 0;
+        int months = 0;
+        while (asOf.AddMonths(months + 1) <= PromoExpirationDate!.Value) months++;
+        return months;
+    }
+
+    /// <summary>
+    /// Planning-only estimate: the flat monthly payment that would amortize this balance to exactly $0 by
+    /// the promo's expiration date, at the promo rate (standard loan-amortization math; a plain Balance /
+    /// months split when the rate is 0%). This is a projection, not a guarantee — it holds only if no new
+    /// charges are added to the balance and every payment is made on schedule between now and expiration.
+    /// Null unless a promo is currently active.
+    /// </summary>
+    public decimal? SuggestedPayoffByPromoExpiration(DateOnly asOf)
+    {
+        if (!HasActivePromo(asOf) || Balance <= 0) return null;
+        var months = PromoMonthsRemaining(asOf);
+        if (months <= 0) return Balance;
+        var monthlyRate = PromoInterestRate!.Value / 12m;
+        if (monthlyRate == 0m) return Math.Round(Balance / months, 2);
+        // Standard amortization formula: payment = balance * rate / (1 - (1 + rate)^-months)
+        var factor = 1m - (decimal)Math.Pow(1.0 + (double)monthlyRate, -months);
+        return factor > 0 ? Math.Round(Balance * monthlyRate / factor, 2) : Math.Round(Balance / months, 2);
+    }
+
     /// <summary>
     /// Estimated deferred-interest lump sum charged at promo expiration if the balance isn't cleared in time —
     /// only meaningful when PromoExpirationBehavior is DeferredInterest. Approximated as simple interest on
@@ -118,8 +146,26 @@ public class Debt
     /// <summary>Monthly interest accrued on the current balance, using today's effective rate (promo if active).</summary>
     public decimal MonthlyInterest => Math.Round(Balance * EffectiveInterestRate(DateOnly.FromDateTime(DateTime.Today)) / 12m, 2);
 
-    /// <summary>True when the minimum payment doesn't cover monthly interest — the balance will grow indefinitely.</summary>
-    public bool IsMinBelowInterest => Balance > 0 && EffectiveInterestRate(DateOnly.FromDateTime(DateTime.Today)) > 0 && MinimumPayment < MonthlyInterest;
+    /// <summary>Monthly interest at the standard (go-to) rate, ignoring any active promo — what accrues once the promo ends.</summary>
+    public decimal StandardMonthlyInterest => Math.Round(Balance * InterestRate / 12m, 2);
+
+    /// <summary>
+    /// True when the minimum payment wouldn't cover interest at the standard rate. Checked against the
+    /// standard rate always — even while a promo is temporarily keeping the effective rate low — so a card
+    /// cushioned by a 0% intro offer still gets flagged before the rate reverts and the balance starts growing.
+    /// </summary>
+    public bool IsMinBelowInterest => Balance > 0 && InterestRate > 0 && MinimumPayment < StandardMonthlyInterest;
+
+    /// <summary>
+    /// Planning-only estimate: the interest-only monthly cost if this card were maxed out to its CreditLimit,
+    /// at the standard rate. Meant for credit cards/lines of credit sitting at a $0 balance, where there's
+    /// nothing yet to warn about but it's still useful to see what a suggested minimum payment might look like
+    /// if the limit were used. Not a stored value and never affects any calculation — purely informational.
+    /// </summary>
+    public decimal? SuggestedMinPaymentAtFullLimit =>
+        CreditLimit.HasValue && CreditLimit.Value > 0 && InterestRate > 0
+            ? Math.Round(CreditLimit.Value * InterestRate / 12m, 2)
+            : null;
 
     /// <summary>
     /// Next upcoming occurrence of PaymentDayOfMonth strictly after the later of today or LastPaymentDate.

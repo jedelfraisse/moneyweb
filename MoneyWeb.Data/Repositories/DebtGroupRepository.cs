@@ -44,8 +44,8 @@ public class DebtGroupRepository(string connectionString) : IDebtGroupRepository
         var groupFilter = groupId.HasValue ? "AND g.Id = @GroupId" : string.Empty;
         var sql = $"""
             SELECT g.*, ba.Id, ba.UserId, ba.Name, ba.AccountType, ba.CurrentBalance, ba.Notes, ba.CreatedAt, ba.UpdatedAt,
-                   d.Id, d.UserId, d.GroupId, d.GroupSortOrder, d.Name, d.Lender,
-                   d.Balance, d.InterestRate, d.MinimumPayment, d.IsFixedPayment,
+                   d.Id, d.UserId, d.GroupId, d.GroupSortOrder, d.Name, d.Lender, d.DebtType,
+                   d.Balance, d.CreditLimit, d.InterestRate, d.MinimumPayment, d.IsFixedPayment,
                    d.PaymentDayOfMonth, d.LastPaymentDate, d.PaymentMethod,
                    d.PayoffDate, d.IsActive,
                    d.PromoInterestRate, d.PromoExpirationDate, d.PromoStartDate, d.PromoOriginalBalance, d.PromoExpirationBehavior,
