@@ -78,6 +78,22 @@ public class IncomeRepository(string connectionString) : IIncomeRepository
         await UpdateAsync(income);
     }
 
+    /// <summary>
+    /// Advances NextPaymentDate to the period following <paramref name="occurrenceDate"/> — the date of the
+    /// specific occurrence actually being confirmed/skipped, rather than whatever NextPaymentDate currently
+    /// holds. Use this instead of <see cref="AdvanceNextPaymentAsync"/> when the caller is reacting to a
+    /// specific projected transaction (which may not be the one NextPaymentDate currently points at, e.g. if
+    /// occurrences were handled out of order), to avoid advancing from the wrong baseline.
+    /// </summary>
+    public async Task AdvanceNextPaymentFromAsync(int id, int userId, DateOnly occurrenceDate)
+    {
+        var income = await GetByIdAsync(id, userId);
+        if (income is null) return;
+        income.NextPaymentDate = occurrenceDate;
+        income.NextPaymentDate = income.AdvancePaymentDate();
+        await UpdateAsync(income);
+    }
+
     public async Task<IEnumerable<Income>> GetSharedWithMeAsync(int userId)
     {
         using var conn = Connect();
