@@ -18,6 +18,7 @@ public static class DataServiceExtensions
         services.AddScoped<IBillRepository>(_ => new BillRepository(connectionString));
         services.AddScoped<ILoanRepository>(_ => new LoanRepository(connectionString));
         services.AddScoped<IUserRepository>(_ => new UserRepository(connectionString));
+        services.AddScoped<ILoginTokenRepository>(_ => new LoginTokenRepository(connectionString));
         services.AddScoped<IBankAccountRepository>(_ => new BankAccountRepository(connectionString));
         services.AddScoped<IDebtGroupRepository>(_ => new DebtGroupRepository(connectionString));
         services.AddScoped<IIncomeRepository>(_ => new IncomeRepository(connectionString));

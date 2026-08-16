@@ -10,5 +10,6 @@ public interface IIncomeRepository
     Task UpdateAsync(Income income);
     Task DeleteAsync(int id, int userId);
     Task AdvanceNextPaymentAsync(int id, int userId);
+    Task AdvanceNextPaymentFromAsync(int id, int userId, DateOnly occurrenceDate);
     Task<IEnumerable<Income>> GetSharedWithMeAsync(int userId);
 }

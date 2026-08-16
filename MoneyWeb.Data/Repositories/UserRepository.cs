@@ -17,6 +17,14 @@ public class UserRepository(string connectionString) : IUserRepository
             new { EntraObjectId = entraObjectId });
     }
 
+    public async Task<User?> GetByEmailAsync(string email)
+    {
+        using var conn = Connect();
+        return await conn.QuerySingleOrDefaultAsync<User>(
+            "SELECT * FROM Users WHERE Email = @Email",
+            new { Email = email });
+    }
+
     public async Task<User?> GetByIdAsync(int id)
     {
         using var conn = Connect();
@@ -35,15 +43,16 @@ public class UserRepository(string connectionString) : IUserRepository
         using var conn = Connect();
         // MERGE guards against the race condition where multiple concurrent requests
         // (HTTP pipeline + Blazor circuit) both attempt to provision the same user.
+        // Keyed on Email — the identity anchor since login moved to passwordless (magic link/code).
         var sql = """
             MERGE Users WITH (HOLDLOCK) AS target
-            USING (SELECT @EntraObjectId AS EntraObjectId) AS source
-                ON target.EntraObjectId = source.EntraObjectId
+            USING (SELECT @Email AS Email) AS source
+                ON target.Email = source.Email
             WHEN NOT MATCHED THEN
                 INSERT (EntraObjectId, Email, DisplayName, PostalCode, IsApproved, IsDeclined, DeclineReason, RequestReason, IsAdmin, LastLoginClaimsJson, LastLoginAtUtc, CreatedAt)
                 VALUES (@EntraObjectId, @Email, @DisplayName, @PostalCode, @IsApproved, @IsDeclined, @DeclineReason, @RequestReason, @IsAdmin, @LastLoginClaimsJson, @LastLoginAtUtc, GETUTCDATE());
 
-            SELECT Id FROM Users WHERE EntraObjectId = @EntraObjectId;
+            SELECT Id FROM Users WHERE Email = @Email;
             """;
         return await conn.ExecuteScalarAsync<int>(sql, user);
     }

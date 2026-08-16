@@ -24,19 +24,26 @@ public class DebtRepository(string connectionString) : IDebtRepository
     public async Task<Debt?> GetByIdAsync(int id, int userId)
     {
         using var conn = Connect();
-        return await conn.QuerySingleOrDefaultAsync<Debt>(
+        var debt = await conn.QuerySingleOrDefaultAsync<Debt>(
             "SELECT * FROM Debts WHERE Id = @Id AND UserId = @UserId", new { Id = id, UserId = userId });
+        if (debt is not null)
+            await AttachFeesAsync(conn, [debt], userId);
+        return debt;
     }
 
     public async Task<int> CreateAsync(Debt debt)
     {
         using var conn = Connect();
         var sql = """
-            INSERT INTO Debts (UserId, GroupId, GroupSortOrder, BankAccountId, Name, Lender, Balance, InterestRate, MinimumPayment,
-                               IsFixedPayment, PaymentDayOfMonth, LastPaymentDate, PaymentMethod, PayoffDate, IsActive, CreatedAt, UpdatedAt)
+            INSERT INTO Debts (UserId, GroupId, GroupSortOrder, BankAccountId, Name, Lender, DebtType, Balance, CreditLimit, InterestRate, MinimumPayment,
+                               IsFixedPayment, PaymentDayOfMonth, LastPaymentDate, PaymentMethod, PayoffDate, IsActive,
+                               PromoInterestRate, PromoExpirationDate, PromoStartDate, PromoOriginalBalance, PromoExpirationBehavior,
+                               CreatedAt, UpdatedAt)
             OUTPUT INSERTED.Id
-            VALUES (@UserId, @GroupId, @GroupSortOrder, @BankAccountId, @Name, @Lender, @Balance, @InterestRate, @MinimumPayment,
-                    @IsFixedPayment, @PaymentDayOfMonth, @LastPaymentDate, @PaymentMethod, @PayoffDate, @IsActive, GETUTCDATE(), GETUTCDATE())
+            VALUES (@UserId, @GroupId, @GroupSortOrder, @BankAccountId, @Name, @Lender, @DebtType, @Balance, @CreditLimit, @InterestRate, @MinimumPayment,
+                    @IsFixedPayment, @PaymentDayOfMonth, @LastPaymentDate, @PaymentMethod, @PayoffDate, @IsActive,
+                    @PromoInterestRate, @PromoExpirationDate, @PromoStartDate, @PromoOriginalBalance, @PromoExpirationBehavior,
+                    GETUTCDATE(), GETUTCDATE())
             """;
         return await conn.ExecuteScalarAsync<int>(sql, debt);
     }
@@ -47,12 +54,16 @@ public class DebtRepository(string connectionString) : IDebtRepository
         var sql = """
             UPDATE Debts SET
                 GroupId = @GroupId, GroupSortOrder = @GroupSortOrder, BankAccountId = @BankAccountId,
-                Name = @Name, Lender = @Lender, Balance = @Balance,
+                Name = @Name, Lender = @Lender, DebtType = @DebtType, Balance = @Balance, CreditLimit = @CreditLimit,
                 InterestRate = @InterestRate, MinimumPayment = @MinimumPayment,
                 IsFixedPayment = @IsFixedPayment,
                 PaymentDayOfMonth = @PaymentDayOfMonth, LastPaymentDate = @LastPaymentDate,
                 PaymentMethod = @PaymentMethod,
-                PayoffDate = @PayoffDate, IsActive = @IsActive, UpdatedAt = GETUTCDATE()
+                PayoffDate = @PayoffDate, IsActive = @IsActive,
+                PromoInterestRate = @PromoInterestRate, PromoExpirationDate = @PromoExpirationDate,
+                PromoStartDate = @PromoStartDate, PromoOriginalBalance = @PromoOriginalBalance,
+                PromoExpirationBehavior = @PromoExpirationBehavior,
+                UpdatedAt = GETUTCDATE()
             WHERE Id = @Id AND UserId = @UserId
             """;
         await conn.ExecuteAsync(sql, debt);

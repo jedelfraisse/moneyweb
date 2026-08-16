@@ -126,6 +126,7 @@ else
                                 <th style="width:5rem"></th>
                                 <th>Debt</th>
                                 <th class="text-end">Balance</th>
+                                <th class="text-end">Usage</th>
                                 <th class="text-end">Rate</th>
                                 <th class="text-end">Min Pmt</th>
                                 <th class="text-end">Fees</th>
@@ -155,13 +156,32 @@ else
                                     </td>
                                     <td>@debt.Name</td>
                                     <td class="text-end">@debt.Balance.ToString("C")</td>
-                                    <td class="text-end">@((debt.InterestRate * 100).ToString("F2"))%</td>
+                                    <td class="text-end">
+                                        @if (debt.CreditUsage.HasValue)
+                                        {
+                                            var usagePct = debt.CreditUsage.Value * 100m;
+                                            var usageClass = usagePct >= 90 ? "text-danger fw-semibold" : usagePct >= 30 ? "text-warning" : "text-success";
+                                            <span class="@usageClass" title="@debt.Balance.ToString("C") of @debt.CreditLimit!.Value.ToString("C") limit">@usagePct.ToString("F1")%</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">—</span>
+                                        }
+                                    </td>
+                                    <td class="text-end">
+                                        @((debt.InterestRate * 100).ToString("F2"))%
+                                        @if (debt.HasActivePromo(_today))
+                                        {
+                                            <br /><span class="badge bg-info-subtle text-info-emphasis small" title="Promo rate active until @debt.PromoExpirationDate!.Value.ToString("MMM d, yyyy")">
+                                                @((debt.PromoInterestRate!.Value * 100).ToString("F2"))% promo
+                                            </span>
+                                        }
+                                    </td>
                                     <td class="text-end @(debt.IsMinBelowInterest ? "table-danger" : "")">
                                         @debt.MinimumPayment.ToString("C")
                                         @if (debt.IsMinBelowInterest)
                                         {
-                                            var tip = $"Min payment ({debt.MinimumPayment:C}) does not cover monthly interest ({debt.MonthlyInterest:C}) — balance will keep growing!";
-                                            <span title="@tip" class="ms-1">⚠️</span>
+                                            <span title="@MinPaymentWarningText(debt)" class="ms-1">⚠️</span>
                                         }
                                     </td>
                                     <td class="text-end text-muted small">@(debt.TotalMonthlyFees > 0 ? debt.TotalMonthlyFees.ToString("C") : "—")</td>
@@ -230,6 +250,7 @@ else
                                 <td>Group Total</td>
                                 <td class="text-end">@group.Debts.Sum(d => d.Balance).ToString("C")</td>
                                 <td></td>
+                                <td></td>
                                 <td class="text-end">@group.Debts.Sum(d => d.MinimumPayment).ToString("C")</td>
                                 <td class="text-end text-muted small">@(group.Debts.Sum(d => d.TotalMonthlyFees) > 0 ? group.Debts.Sum(d => d.TotalMonthlyFees).ToString("C") : "—")</td>
                                 <td class="text-end fw-semibold">@group.Debts.Sum(d => d.TotalMonthlyPayment).ToString("C")</td>
@@ -267,6 +288,7 @@ else
                 <tr>
                     <th>Debt</th>
                     <th class="text-end">Balance</th>
+                    <th class="text-end">Usage</th>
                     <th class="text-end">Rate</th>
                     <th class="text-end">Min Payment</th>
                     <th class="text-end">Fees</th>
@@ -283,13 +305,32 @@ else
                     <tr>
                         <td>@debt.Name</td>
                         <td class="text-end">@debt.Balance.ToString("C")</td>
-                        <td class="text-end">@((debt.InterestRate * 100).ToString("F2"))%</td>
+                        <td class="text-end">
+                            @if (debt.CreditUsage.HasValue)
+                            {
+                                var usagePct = debt.CreditUsage.Value * 100m;
+                                var usageClass = usagePct >= 90 ? "text-danger fw-semibold" : usagePct >= 30 ? "text-warning" : "text-success";
+                                <span class="@usageClass" title="@debt.Balance.ToString("C") of @debt.CreditLimit!.Value.ToString("C") limit">@usagePct.ToString("F1")%</span>
+                            }
+                            else
+                            {
+                                <span class="text-muted">—</span>
+                            }
+                        </td>
+                        <td class="text-end">
+                            @((debt.InterestRate * 100).ToString("F2"))%
+                            @if (debt.HasActivePromo(_today))
+                            {
+                                <br /><span class="badge bg-info-subtle text-info-emphasis small" title="Promo rate active until @debt.PromoExpirationDate!.Value.ToString("MMM d, yyyy")">
+                                    @((debt.PromoInterestRate!.Value * 100).ToString("F2"))% promo
+                                </span>
+                            }
+                        </td>
                         <td class="text-end @(debt.IsMinBelowInterest ? "table-danger" : "")">
                             @debt.MinimumPayment.ToString("C")
                             @if (debt.IsMinBelowInterest)
                             {
-                            var tipU = $"Min payment ({debt.MinimumPayment:C}) does not cover monthly interest ({debt.MonthlyInterest:C}) — balance will keep growing!";
-                            <span title="@tipU" class="ms-1">⚠️</span>
+                            <span title="@MinPaymentWarningText(debt)" class="ms-1">⚠️</span>
                             }
                         </td>
                         <td class="text-end text-muted small">@(debt.TotalMonthlyFees > 0 ? debt.TotalMonthlyFees.ToString("C") : "—")</td>
@@ -350,6 +391,7 @@ else
                     <td>Ungrouped Total</td>
                     <td class="text-end">@_ungrouped.Sum(d => d.Balance).ToString("C")</td>
                     <td></td>
+                    <td></td>
                     <td class="text-end">@_ungrouped.Sum(d => d.MinimumPayment).ToString("C")</td>
                     <td class="text-end text-muted small">@(_ungrouped.Sum(d => d.TotalMonthlyFees) > 0 ? _ungrouped.Sum(d => d.TotalMonthlyFees).ToString("C") : "—")</td>
                     <td class="text-end fw-semibold">@_ungrouped.Sum(d => d.TotalMonthlyPayment).ToString("C")</td>
@@ -385,7 +427,15 @@ else
                     <td><span class="badge bg-secondary">@debt.OwnerDisplayName</span></td>
                     <td>@debt.Name</td>
                     <td class="text-end">@debt.Balance.ToString("C")</td>
-                    <td class="text-end">@((debt.InterestRate * 100).ToString("F2"))%</td>
+                    <td class="text-end">
+                        @((debt.InterestRate * 100).ToString("F2"))%
+                        @if (debt.HasActivePromo(_today))
+                        {
+                            <br /><span class="badge bg-info-subtle text-info-emphasis small" title="Promo rate active until @debt.PromoExpirationDate!.Value.ToString("MMM d, yyyy")">
+                                @((debt.PromoInterestRate!.Value * 100).ToString("F2"))% promo
+                            </span>
+                        }
+                    </td>
                     <td class="text-end">@debt.MinimumPayment.ToString("C")</td>
                 </tr>
             }
@@ -626,6 +676,18 @@ else
                         <input class="form-control" @bind="_editingDebt.Name" />
                     </div>
                     <div class="mb-3">
+                        <label class="form-label">Debt Type</label>
+                        <select class="form-select" @bind="_editingDebt.DebtType">
+                            <option value="@DebtType.Other">Other</option>
+                            <option value="@DebtType.CreditCard">Credit Card</option>
+                            <option value="@DebtType.Mortgage">Mortgage</option>
+                            <option value="@DebtType.AutoLoan">Auto Loan</option>
+                            <option value="@DebtType.StudentLoan">Student Loan</option>
+                            <option value="@DebtType.PersonalLoan">Personal Loan</option>
+                            <option value="@DebtType.LineOfCredit">Line of Credit</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
                         <label class="form-label">Lender</label>
                         <input class="form-control" @bind="_editingDebt.Lender" />
                     </div>
@@ -633,6 +695,29 @@ else
                         <label class="form-label">Balance</label>
                         <input class="form-control" type="number" step="0.01" @bind="_editingDebt.Balance" />
                     </div>
+                    @if (_editingDebt.DebtType == DebtType.CreditCard || _editingDebt.DebtType == DebtType.LineOfCredit)
+                    {
+                        <div class="mb-3">
+                            <label class="form-label">Credit Limit</label>
+                            <input class="form-control" type="number" step="0.01" @bind="_editingDebt.CreditLimit" />
+                            @if (_editingDebt.CreditUsage.HasValue)
+                            {
+                                var usagePct = _editingDebt.CreditUsage.Value * 100m;
+                                var usageClass = usagePct >= 90 ? "text-danger" : usagePct >= 30 ? "text-warning" : "text-success";
+                                <div class="form-text @usageClass">
+                                    Credit usage: @usagePct.ToString("F1")%
+                                </div>
+                            }
+                            @if (_editingDebt.Balance == 0 && _editingDebt.SuggestedMinPaymentAtFullLimit.HasValue)
+                            {
+                                <div class="form-text text-muted">
+                                    💡 Nothing to pay yet at a $0 balance. If this card were maxed to its limit, expect
+                                    roughly @_editingDebt.SuggestedMinPaymentAtFullLimit.Value.ToString("C")/mo in interest alone
+                                    at @((_editingDebt.InterestRate * 100).ToString("F2"))% — a planning estimate only, not a real minimum payment.
+                                </div>
+                            }
+                        </div>
+                    }
                     <div class="mb-3">
                         <label class="form-label">Interest Rate (%)</label>
                         <input class="form-control" type="number" step="0.01"
@@ -644,8 +729,8 @@ else
                         <input class="form-control" type="number" step="0.01" @bind="_editingDebt.MinimumPayment" />
                         @if (_editingDebt.IsMinBelowInterest)
                         {
-                            <div class="alert alert-danger mt-2 mb-0 py-2 small">
-                                ⚠️ Min payment (@_editingDebt.MinimumPayment.ToString("C")) does not cover monthly interest (@_editingDebt.MonthlyInterest.ToString("C")) — balance will keep growing!
+                            <div class="alert @(_editingDebt.HasActivePromo(_today) ? "alert-warning" : "alert-danger") mt-2 mb-0 py-2 small">
+                                ⚠️ @MinPaymentWarningText(_editingDebt)
                             </div>
                         }
                     </div>
@@ -657,6 +742,79 @@ else
                                 Fixed payment — lender does not allow extra payments
                             </label>
                         </div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="chkHasPromo"
+                                   checked="@_hasPromoRate" @onchange="e => SetHasPromoRate((bool)(e.Value ?? false))" />
+                            <label class="form-check-label" for="chkHasPromo">
+                                Promotional / intro rate
+                            </label>
+                        </div>
+                        @if (_hasPromoRate)
+                        {
+                            <div class="border rounded p-3 mt-2">
+                                <div class="row mb-2">
+                                    <div class="col">
+                                        <label class="form-label small">Promo Rate (%)</label>
+                                        <input class="form-control form-control-sm" type="number" step="0.01"
+                                               value="@(_editingDebt.PromoInterestRate.HasValue ? _editingDebt.PromoInterestRate.Value * 100 : 0)"
+                                               @onchange="e => { if (decimal.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var r)) _editingDebt.PromoInterestRate = r / 100m; }" />
+                                    </div>
+                                    <div class="col">
+                                        <label class="form-label small">Started On</label>
+                                        <input type="date" class="form-control form-control-sm"
+                                               @bind="_editingDebt.PromoStartDate" @bind:format="yyyy-MM-dd" />
+                                    </div>
+                                    <div class="col">
+                                        <label class="form-label small">Expires On</label>
+                                        <input type="date" class="form-control form-control-sm"
+                                               @bind="_editingDebt.PromoExpirationDate" @bind:format="yyyy-MM-dd" />
+                                    </div>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label small">If a balance remains when it expires</label>
+                                    <select class="form-select form-select-sm" @bind="_editingDebt.PromoExpirationBehavior">
+                                        <option value="@PromoExpirationBehavior.RevertToStandardRate">Just switch to the standard rate (most bank cards)</option>
+                                        <option value="@PromoExpirationBehavior.DeferredInterest">Retroactively charge deferred interest (store-card promos)</option>
+                                    </select>
+                                </div>
+                                @if (_editingDebt.PromoExpirationBehavior == PromoExpirationBehavior.DeferredInterest)
+                                {
+                                    <div class="mb-2">
+                                        <label class="form-label small">Original Promo Balance <span class="text-muted">(defaults to current balance)</span></label>
+                                        <input class="form-control form-control-sm" type="number" step="0.01"
+                                               @bind="_editingDebt.PromoOriginalBalance" placeholder="@_editingDebt.Balance.ToString("0.00")" />
+                                    </div>
+                                    @if (_editingDebt.PromoExpirationDate.HasValue && _editingDebt.PromoStartDate.HasValue)
+                                    {
+                                        <div class="alert alert-warning py-2 small mb-0">
+                                            ⚠️ Estimated deferred interest if not paid off by @_editingDebt.PromoExpirationDate.Value.ToString("MMM d, yyyy"):
+                                            @_editingDebt.EstimatedDeferredInterest.ToString("C")
+                                        </div>
+                                    }
+                                }
+                                @if (_editingDebt.PromoExpirationDate.HasValue)
+                                {
+                                    var daysLeft = _editingDebt.PromoExpirationDate.Value.DayNumber - DateOnly.FromDateTime(DateTime.Today).DayNumber;
+                                    <div class="text-muted small mt-1">
+                                        @(daysLeft >= 0 ? $"Promo active — {daysLeft} day(s) left" : "Promo has expired")
+                                    </div>
+                                }
+                                @{ var suggestedPayoff = _editingDebt.SuggestedPayoffByPromoExpiration(_today); }
+                                @if (suggestedPayoff.HasValue)
+                                {
+                                    var monthsLeft = _editingDebt.PromoMonthsRemaining(_today);
+                                    <div class="alert alert-info py-2 small mt-2 mb-0">
+                                        💡 To reach a $0 balance right as this promo ends
+                                        (@((_editingDebt.PromoInterestRate!.Value * 100).ToString("F2"))% for @monthsLeft more month(s)),
+                                        pay <strong>@suggestedPayoff.Value.ToString("C")/mo</strong>.
+                                        This is a projection, not a guarantee — it only holds if no new charges land on this card
+                                        and every payment is made on schedule between now and the expiration date.
+                                    </div>
+                                }
+                            </div>
+                        }
                     </div>
                     <div class="row mb-3">
                         <div class="col">
@@ -927,6 +1085,16 @@ else
     private bool _loading = true;
     private int _userId;
     private int _horizonMonths = 12;
+    private readonly DateOnly _today = DateOnly.FromDateTime(DateTime.Today);
+
+    /// <summary>
+    /// The "min payment doesn't cover interest" warning text — promo-aware: while a promo is active it warns
+    /// about the standard rate the balance will revert to, rather than staying silent just because the
+    /// temporarily-lower promo rate happens to be covered right now.
+    /// </summary>
+    private string MinPaymentWarningText(Debt debt) => debt.HasActivePromo(_today)
+        ? $"Min payment ({debt.MinimumPayment:C}) won't cover interest once the promo ends and the rate reverts to {debt.InterestRate:P2} (~{debt.StandardMonthlyInterest:C}/mo) — balance will start growing then unless you pay more now."
+        : $"Min payment ({debt.MinimumPayment:C}) does not cover monthly interest ({debt.MonthlyInterest:C}) — balance will keep growing!";
 
     private List<DebtGroup> _groups = [];
     private List<Debt> _ungrouped = [];
@@ -982,6 +1150,27 @@ else
     private string? _debtError;
     private Debt? _deleteDebtTarget;
     private DateOnly _debtNextDueDate;
+    private bool _hasPromoRate;
+
+    /// <summary>Toggling the promo checkbox seeds sensible defaults on, and clears the fields off.</summary>
+    private void SetHasPromoRate(bool enabled)
+    {
+        _hasPromoRate = enabled;
+        if (enabled)
+        {
+            _editingDebt.PromoInterestRate ??= 0m;
+            _editingDebt.PromoStartDate ??= DateOnly.FromDateTime(DateTime.Today);
+            _editingDebt.PromoExpirationDate ??= DateOnly.FromDateTime(DateTime.Today).AddMonths(12);
+        }
+        else
+        {
+            _editingDebt.PromoInterestRate = null;
+            _editingDebt.PromoStartDate = null;
+            _editingDebt.PromoExpirationDate = null;
+            _editingDebt.PromoOriginalBalance = null;
+            _editingDebt.PromoExpirationBehavior = PromoExpirationBehavior.RevertToStandardRate;
+        }
+    }
     private int? _originalDebtGroupId;
     private List<DebtFee> _editingFees = [];
     private List<int> _deletedFeeIds = [];
@@ -1212,6 +1401,7 @@ else
         _groupIdStr = groupId.HasValue ? groupId.Value.ToString() : string.Empty;
         _debtBankIdStr = string.Empty;
         _debtNextDueDate = DateOnly.FromDateTime(DateTime.Today);
+        _hasPromoRate = false;
         _originalDebtGroupId = groupId;
         _debtError = null;
         _showDebtModal = true;
@@ -1231,16 +1421,20 @@ else
         {
             Id = d.Id, UserId = d.UserId, GroupId = d.GroupId, GroupSortOrder = d.GroupSortOrder,
             BankAccountId = d.BankAccountId,
-            Name = d.Name, Lender = d.Lender, Balance = d.Balance,
+            Name = d.Name, Lender = d.Lender, DebtType = d.DebtType, Balance = d.Balance, CreditLimit = d.CreditLimit,
             InterestRate = d.InterestRate, MinimumPayment = d.MinimumPayment,
             IsFixedPayment = d.IsFixedPayment,
             PaymentDayOfMonth = d.PaymentDayOfMonth, LastPaymentDate = d.LastPaymentDate,
             PaymentMethod = d.PaymentMethod,
-            PayoffDate = d.PayoffDate, IsActive = d.IsActive
+            PayoffDate = d.PayoffDate, IsActive = d.IsActive,
+            PromoInterestRate = d.PromoInterestRate, PromoExpirationDate = d.PromoExpirationDate,
+            PromoStartDate = d.PromoStartDate, PromoOriginalBalance = d.PromoOriginalBalance,
+            PromoExpirationBehavior = d.PromoExpirationBehavior
         };
         _groupIdStr = d.GroupId.HasValue ? d.GroupId.Value.ToString() : string.Empty;
         _debtBankIdStr = d.BankAccountId.HasValue ? d.BankAccountId.Value.ToString() : string.Empty;
         _debtNextDueDate = _editingDebt.NextPaymentDate ?? DateOnly.FromDateTime(DateTime.Today);
+        _hasPromoRate = d.PromoInterestRate.HasValue;
         _originalDebtGroupId = d.GroupId;
         _debtError = null;
         _showDebtModal = true;
@@ -1265,6 +1459,28 @@ else
     {
         if (string.IsNullOrWhiteSpace(_editingDebt.Name)) { _debtError = "Name is required."; return; }
         if (_editingDebt.Balance < 0) { _debtError = "Balance cannot be negative."; return; }
+        if ((_editingDebt.DebtType == DebtType.CreditCard || _editingDebt.DebtType == DebtType.LineOfCredit)
+            && (_editingDebt.CreditLimit is null || _editingDebt.CreditLimit <= 0))
+        {
+            _debtError = "Credit limit must be greater than 0 for credit cards and lines of credit.";
+            return;
+        }
+        if (!_hasPromoRate)
+        {
+            _editingDebt.PromoInterestRate = null;
+            _editingDebt.PromoStartDate = null;
+            _editingDebt.PromoExpirationDate = null;
+            _editingDebt.PromoOriginalBalance = null;
+            _editingDebt.PromoExpirationBehavior = PromoExpirationBehavior.RevertToStandardRate;
+        }
+        else
+        {
+            if (_editingDebt.PromoExpirationDate is null) { _debtError = "Promo expiration date is required."; return; }
+            if (_editingDebt.PromoStartDate is { } start && _editingDebt.PromoExpirationDate.Value <= start)
+            { _debtError = "Promo expiration date must be after the start date."; return; }
+            if (_editingDebt.PromoExpirationBehavior == PromoExpirationBehavior.DeferredInterest)
+                _editingDebt.PromoOriginalBalance ??= _editingDebt.Balance;
+        }
         _editingDebt.GroupId = int.TryParse(_groupIdStr, out var gid) ? gid : null;
         _editingDebt.BankAccountId = int.TryParse(_debtBankIdStr, out var bid) ? bid : null;
         _editingDebt.UserId = _userId;

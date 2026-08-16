@@ -47,7 +47,7 @@ else
                             }
                             else
                             {
-                                <span class="text-muted">Not set — add it to your Microsoft account profile</span>
+                                <span class="text-muted">Not set</span>
                             }
                         </dd>
                         <dt class="col-sm-4">Member since</dt>
@@ -244,7 +244,7 @@ else
         try
         {
             await UserRepo.DeleteUserDataAsync(_user.Id);
-            Navigation.NavigateTo("MicrosoftIdentity/Account/SignOut", forceLoad: true);
+            Navigation.NavigateTo("/auth/logout", forceLoad: true);
         }
         catch (Exception ex)
         {
