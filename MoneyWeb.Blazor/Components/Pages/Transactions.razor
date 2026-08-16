@@ -454,9 +454,12 @@ else
     {
         if (_confirmingTransaction is null) return;
         var tx = _confirmingTransaction;
-        // When clearing (not skipping) an income entry, advance the income's next payment date
-        if (_confirmIsClearing && tx.Category == TransactionCategory.Income && tx.ReferenceId.HasValue)
-            await IncomeRepo.AdvanceNextPaymentAsync(tx.ReferenceId.Value, _userId);
+        // Income: whether cleared or skipped, this occurrence is resolved either way — advance
+        // NextPaymentDate to the period following the occurrence actually being handled (tx.TransactionDate),
+        // not just whatever NextPaymentDate currently holds, which can drift if occurrences are handled
+        // out of order (previously this only ran on Clear, and always advanced from the stored value).
+        if (tx.Category == TransactionCategory.Income && tx.ReferenceId.HasValue)
+            await IncomeRepo.AdvanceNextPaymentFromAsync(tx.ReferenceId.Value, _userId, tx.TransactionDate);
         // When clearing a debt payment, advance the debt's last payment date and re-push projections
         if (_confirmIsClearing && tx.Category == TransactionCategory.DebtPayment && tx.ReferenceId.HasValue)
         {
