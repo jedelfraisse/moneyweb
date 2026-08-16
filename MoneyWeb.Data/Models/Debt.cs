@@ -19,6 +19,17 @@ public enum PromoExpirationBehavior
     DeferredInterest = 1
 }
 
+public enum DebtType
+{
+    Other = 0,
+    CreditCard = 1,
+    Mortgage = 2,
+    AutoLoan = 3,
+    StudentLoan = 4,
+    PersonalLoan = 5,
+    LineOfCredit = 6
+}
+
 public class Debt
 {
     public int Id { get; set; }
@@ -28,7 +39,9 @@ public class Debt
     public int? BankAccountId { get; set; }
     public string Name { get; set; } = string.Empty;
     public string? Lender { get; set; }
+    public DebtType DebtType { get; set; } = DebtType.Other;
     public decimal Balance { get; set; }
+    public decimal? CreditLimit { get; set; }   // only relevant for credit card and line of credit debt types
     public decimal InterestRate { get; set; }   // stored as fraction, e.g. 0.2199 = 21.99%
     public decimal MinimumPayment { get; set; }
     public bool IsFixedPayment { get; set; } = false; // when true, lender requires exact minimum — no extra payments allowed
@@ -61,6 +74,11 @@ public class Debt
     // Navigation — fees loaded separately by repository
     public List<DebtFee> Fees { get; set; } = [];
     public BankAccount? BankAccount { get; set; }
+
+    /// <summary>Credit utilization ratio (Balance / CreditLimit). Null when CreditLimit is not set or zero.</summary>
+    public decimal? CreditUsage => CreditLimit.HasValue && CreditLimit.Value > 0
+        ? Math.Round(Balance / CreditLimit.Value, 4)
+        : null;
 
     /// <summary>Sum of all active fees (taxes, insurance, etc.) not counted toward balance reduction.</summary>
     public decimal TotalMonthlyFees => Fees.Where(f => f.IsActive).Sum(f => f.Amount);

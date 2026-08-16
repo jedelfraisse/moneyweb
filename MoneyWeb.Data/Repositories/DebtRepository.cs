@@ -32,12 +32,12 @@ public class DebtRepository(string connectionString) : IDebtRepository
     {
         using var conn = Connect();
         var sql = """
-            INSERT INTO Debts (UserId, GroupId, GroupSortOrder, BankAccountId, Name, Lender, Balance, InterestRate, MinimumPayment,
+            INSERT INTO Debts (UserId, GroupId, GroupSortOrder, BankAccountId, Name, Lender, DebtType, Balance, CreditLimit, InterestRate, MinimumPayment,
                                IsFixedPayment, PaymentDayOfMonth, LastPaymentDate, PaymentMethod, PayoffDate, IsActive,
                                PromoInterestRate, PromoExpirationDate, PromoStartDate, PromoOriginalBalance, PromoExpirationBehavior,
                                CreatedAt, UpdatedAt)
             OUTPUT INSERTED.Id
-            VALUES (@UserId, @GroupId, @GroupSortOrder, @BankAccountId, @Name, @Lender, @Balance, @InterestRate, @MinimumPayment,
+            VALUES (@UserId, @GroupId, @GroupSortOrder, @BankAccountId, @Name, @Lender, @DebtType, @Balance, @CreditLimit, @InterestRate, @MinimumPayment,
                     @IsFixedPayment, @PaymentDayOfMonth, @LastPaymentDate, @PaymentMethod, @PayoffDate, @IsActive,
                     @PromoInterestRate, @PromoExpirationDate, @PromoStartDate, @PromoOriginalBalance, @PromoExpirationBehavior,
                     GETUTCDATE(), GETUTCDATE())
@@ -51,7 +51,7 @@ public class DebtRepository(string connectionString) : IDebtRepository
         var sql = """
             UPDATE Debts SET
                 GroupId = @GroupId, GroupSortOrder = @GroupSortOrder, BankAccountId = @BankAccountId,
-                Name = @Name, Lender = @Lender, Balance = @Balance,
+                Name = @Name, Lender = @Lender, DebtType = @DebtType, Balance = @Balance, CreditLimit = @CreditLimit,
                 InterestRate = @InterestRate, MinimumPayment = @MinimumPayment,
                 IsFixedPayment = @IsFixedPayment,
                 PaymentDayOfMonth = @PaymentDayOfMonth, LastPaymentDate = @LastPaymentDate,
