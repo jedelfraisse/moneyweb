@@ -39,7 +39,7 @@ public class SmtpEmailSender(IConfiguration config, ILogger<SmtpEmailSender> log
         var socketOptions = enableSsl && port == 465 ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.Auto;
         await client.ConnectAsync(host, port, socketOptions, ct);
         if (!string.IsNullOrWhiteSpace(username))
-            await client.AuthenticateAsync(username, password, ct);
+            await client.AuthenticateAsync(username, password ?? string.Empty, ct);
         await client.SendAsync(message, ct);
         await client.DisconnectAsync(true, ct);
 
