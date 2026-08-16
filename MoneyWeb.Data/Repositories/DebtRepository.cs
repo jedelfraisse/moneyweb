@@ -24,8 +24,11 @@ public class DebtRepository(string connectionString) : IDebtRepository
     public async Task<Debt?> GetByIdAsync(int id, int userId)
     {
         using var conn = Connect();
-        return await conn.QuerySingleOrDefaultAsync<Debt>(
+        var debt = await conn.QuerySingleOrDefaultAsync<Debt>(
             "SELECT * FROM Debts WHERE Id = @Id AND UserId = @UserId", new { Id = id, UserId = userId });
+        if (debt is not null)
+            await AttachFeesAsync(conn, [debt], userId);
+        return debt;
     }
 
     public async Task<int> CreateAsync(Debt debt)
