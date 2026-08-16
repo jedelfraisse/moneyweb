@@ -1,12 +1,20 @@
-using System.Net;
-using System.Net.Mail;
+using MailKit.Net.Smtp;
+using MailKit.Security;
+using MimeKit;
 
 namespace MoneyWeb.Blazor.Services.Email;
 
 /// <summary>
 /// Sends the login email via SMTP (e.g. a local dev SMTP catcher like smtp4dev, or a real
 /// relay in production). Configured via the "Smtp" section: Host, Port, From, and optionally
-/// Username/Password (auth) and EnableSsl (STARTTLS).
+/// Username/Password (auth) and EnableSsl.
+///
+/// Uses MailKit rather than System.Net.Mail.SmtpClient — the latter's EnableSsl only ever
+/// implements STARTTLS (explicit TLS, the port-587 style) and has no support for implicit TLS
+/// (port 465, where the connection is TLS from the first byte). Pointed at a real port-465
+/// mail server, System.Net.Mail.SmtpClient tries to speak plaintext SMTP to a socket the server
+/// is already expecting a TLS handshake on, and throws. MailKit picks the right mode from the
+/// port automatically via SecureSocketOptions.Auto.
 /// </summary>
 public class SmtpEmailSender(IConfiguration config, ILogger<SmtpEmailSender> logger) : IEmailSender
 {
@@ -19,18 +27,21 @@ public class SmtpEmailSender(IConfiguration config, ILogger<SmtpEmailSender> log
         var password = config["Smtp:Password"];
         var enableSsl = bool.TryParse(config["Smtp:EnableSsl"], out var ssl) && ssl;
 
-        using var message = new MailMessage(from, toEmail)
-        {
-            Subject = "Your MoneyWeb sign-in code",
-            Body = BuildBody(magicLinkUrl, code),
-            IsBodyHtml = true,
-        };
+        var message = new MimeMessage();
+        message.From.Add(MailboxAddress.Parse(from));
+        message.To.Add(MailboxAddress.Parse(toEmail));
+        message.Subject = "Your MoneyWeb sign-in code";
+        message.Body = new TextPart("html") { Text = BuildBody(magicLinkUrl, code) };
 
-        using var client = new SmtpClient(host, port) { EnableSsl = enableSsl };
+        using var client = new SmtpClient();
+        // SslOnConnect for the classic implicit-TLS port (465); otherwise let MailKit negotiate
+        // STARTTLS when offered (587, or a dev catcher that doesn't support TLS at all).
+        var socketOptions = enableSsl && port == 465 ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.Auto;
+        await client.ConnectAsync(host, port, socketOptions, ct);
         if (!string.IsNullOrWhiteSpace(username))
-            client.Credentials = new NetworkCredential(username, password);
-
-        await client.SendMailAsync(message, ct);
+            await client.AuthenticateAsync(username, password, ct);
+        await client.SendAsync(message, ct);
+        await client.DisconnectAsync(true, ct);
 
         logger.LogInformation("Sent login email to {Email} via SMTP {Host}:{Port} (auth: {Auth}, ssl: {Ssl})",
             toEmail, host, port, !string.IsNullOrWhiteSpace(username), enableSsl);
