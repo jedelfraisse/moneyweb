@@ -1,0 +1,84 @@
+@page "/admin/maintenance"
+@rendermode InteractiveServer
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@using MoneyWeb.Blazor.Services
+@using MoneyWeb.Data.Models
+@using MoneyWeb.Data.Repositories.Interfaces
+@inject CurrentUserService CurrentUserSvc
+@inject ICashFlowRepository CashFlowRepo
+
+<PageTitle>Admin Maintenance</PageTitle>
+
+@if (_currentUser is null)
+{
+    <div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>
+}
+else if (!_currentUser.IsAdmin)
+{
+    <div class="alert alert-danger">Access denied. Admins only.</div>
+}
+else
+{
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3 mb-0">Maintenance</h1>
+        <div class="d-flex gap-2">
+            <a href="admin/users" class="btn btn-sm btn-outline-secondary">👥 Manage Users</a>
+            <a href="admin/stats" class="btn btn-sm btn-outline-secondary">📊 Stats</a>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(_message))
+    {
+        <div class="alert alert-success alert-dismissible">
+            @_message
+            <button type="button" class="btn-close" @onclick="() => _message = null"></button>
+        </div>
+    }
+
+    <div class="card">
+        <div class="card-body">
+            <h5 class="card-title">Clean up orphaned transactions</h5>
+            <p class="card-text text-muted small">
+                Deleting a Debt or Bill removes its own upcoming transactions as part of the delete flow.
+                This sweeps up leftovers from deletes made <em>before</em> that cleanup existed — upcoming
+                (projected) transactions whose debt or bill no longer exists. Already-cleared transaction
+                history is never touched.
+            </p>
+            <button class="btn btn-outline-danger" disabled="@_running" @onclick="RunCleanup">
+                @if (_running)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                Run Cleanup
+            </button>
+        </div>
+    </div>
+}
+
+@code {
+    private User? _currentUser;
+    private bool _running;
+    private string? _message;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _currentUser = await CurrentUserSvc.GetCurrentUserAsync();
+    }
+
+    private async Task RunCleanup()
+    {
+        _running = true;
+        _message = null;
+        try
+        {
+            var removed = await CashFlowRepo.DeleteOrphanedProjectedTransactionsAsync();
+            _message = removed == 0
+                ? "No orphaned transactions found."
+                : $"Removed {removed} orphaned transaction{(removed == 1 ? "" : "s")}.";
+        }
+        finally
+        {
+            _running = false;
+        }
+    }
+}

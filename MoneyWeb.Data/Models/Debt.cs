@@ -150,6 +150,16 @@ public class Debt
     public decimal StandardMonthlyInterest => Math.Round(Balance * InterestRate / 12m, 2);
 
     /// <summary>
+    /// The slice of the minimum payment that actually reduces principal, at today's effective rate —
+    /// MinimumPayment minus MonthlyInterest. Negative when the payment doesn't even cover interest
+    /// (the balance is growing, not shrinking, despite payments being made).
+    /// </summary>
+    public decimal MonthlyPrincipalPortion => MinimumPayment - MonthlyInterest;
+
+    /// <summary>Same breakdown as <see cref="MonthlyPrincipalPortion"/>, but at the standard rate instead of any active promo rate.</summary>
+    public decimal StandardMonthlyPrincipalPortion => MinimumPayment - StandardMonthlyInterest;
+
+    /// <summary>
     /// True when the minimum payment wouldn't cover interest at the standard rate. Checked against the
     /// standard rate always — even while a promo is temporarily keeping the effective rate low — so a card
     /// cushioned by a 0% intro offer still gets flagged before the rate reverts and the balance starts growing.

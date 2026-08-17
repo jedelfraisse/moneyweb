@@ -80,11 +80,6 @@ public class DebtProjectionService : IDebtProjectionService
         await _cfRepo.BulkInsertProjectedAsync(transactions);
     }
 
-    public async Task DeleteDebtProjectionsAsync(int debtId, int userId)
-    {
-        await _cfRepo.DeleteProjectedForSourceAsync(debtId, userId, TransactionCategory.DebtPayment);
-    }
-
     private async Task PushUngroupedAsync(Debt debt, int userId)
     {
         if (!debt.BankAccountId.HasValue) return;
