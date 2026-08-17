@@ -31,6 +31,7 @@ else
                 <button class="btn @(_filter == "admin"    ? "btn-primary"           : "btn-outline-primary")"   @onclick='() => _filter = "admin"'>Admin <span class="badge bg-secondary ms-1">@_users.Count(u => u.IsAdmin)</span></button>
             </div>
             <a href="admin/stats" class="btn btn-sm btn-outline-secondary">📊 Stats</a>
+            <a href="admin/maintenance" class="btn btn-sm btn-outline-secondary">🧹 Maintenance</a>
         </div>
     </div>
 
