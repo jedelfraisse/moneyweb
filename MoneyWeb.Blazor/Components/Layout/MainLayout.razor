@@ -3,21 +3,22 @@
 <NavMenu />
 
 <main>
-    <div class="container-xl px-4 pt-3">
-        <div class="alert alert-warning d-flex align-items-start gap-2 mb-0" role="alert">
-            <span style="font-size:1.3rem">⚠️</span>
-            <div>
-                <strong>Early Development — Data May Be Reset</strong><br />
-                MoneyWeb is actively under development. While we try to preserve your data, changes to the database
-                structure may occasionally require a full reset with no prior notice. Please don't rely on this site
-                as your only record of important financial information.
-            </div>
-        </div>
-    </div>
     <article class="content px-4 py-3">
         @Body
     </article>
 </main>
+
+<div class="container-xl px-4">
+    <div class="alert alert-warning d-flex align-items-start gap-2 mb-0" role="alert">
+        <span style="font-size:1.3rem">⚠️</span>
+        <div>
+            <strong>Early Development — Data May Be Reset</strong><br />
+            MoneyWeb is actively under development. While we try to preserve your data, changes to the database
+            structure may occasionally require a full reset with no prior notice. Please don't rely on this site
+            as your only record of important financial information.
+        </div>
+    </div>
+</div>
 
 <footer class="border-top mt-4 py-3 px-4 text-muted small text-center">
     <span>&copy; @DateTime.Now.Year Delfraisse.com</span>

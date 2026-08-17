@@ -261,4 +261,19 @@ public class CashFlowRepository(string connectionString) : ICashFlowRepository
               AND Category = @Category AND IsProjected = 1
             """, new { ReferenceId = referenceId, UserId = userId, Category = (int)category });
     }
+
+    public async Task<int> DeleteOrphanedProjectedTransactionsAsync()
+    {
+        using var conn = Connect();
+        return await conn.ExecuteAsync($"""
+            DELETE cft FROM CashFlowTransactions cft
+            WHERE cft.IsProjected = 1
+              AND cft.ReferenceId IS NOT NULL
+              AND (
+                (cft.Category = {(int)TransactionCategory.DebtPayment} AND NOT EXISTS (SELECT 1 FROM Debts d WHERE d.Id = cft.ReferenceId))
+                OR
+                (cft.Category = {(int)TransactionCategory.Bill} AND NOT EXISTS (SELECT 1 FROM Bills b WHERE b.Id = cft.ReferenceId))
+              )
+            """);
+    }
 }

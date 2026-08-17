@@ -74,4 +74,12 @@ public interface ICashFlowRepository
     /// used when the source (e.g. a Bill) is deleted but its future transactions should be kept.
     /// </summary>
     Task DetachSourceKeepAsManualAsync(int referenceId, int userId, TransactionCategory category);
+
+    /// <summary>
+    /// Admin maintenance: deletes still-upcoming (IsProjected) DebtPayment/Bill transactions whose
+    /// ReferenceId no longer matches any existing Debt/Bill — leftovers from deletes made before both
+    /// pages started resolving their cash-flow rows at delete time. Historical (cleared) rows are left
+    /// alone. Returns the number of rows removed.
+    /// </summary>
+    Task<int> DeleteOrphanedProjectedTransactionsAsync();
 }
