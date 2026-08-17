@@ -128,14 +128,9 @@ else
                                 <th class="text-end">Balance</th>
                                 <th class="text-end">Usage</th>
                                 <th class="text-end">Rate</th>
-                                <th class="text-end">Min Pmt</th>
-                                <th class="text-end">Fees</th>
-                                <th class="text-end">Total Pmt</th>
                                 <th class="text-end">Next Pmt</th>
-                                <th class="text-end">Interest</th>
                                 <th class="text-center">Method</th>
                                 <th class="text-end">Next Due</th>
-                                <th class="text-end">Payoff (@active)</th>
                                 <th></th>
                             </tr>
                         </thead>
@@ -144,7 +139,6 @@ else
                             {
                                 var debt = orderedDebts[i];
                                 var idx = i;
-                                var payoffDate = activeResult.DebtPayoffDates.TryGetValue(debt.Id, out var d) ? d : (DateOnly?)null;
                                 <tr>
                                     <td class="text-nowrap">
                                         <button class="btn btn-sm btn-outline-secondary px-1 py-0"
@@ -177,16 +171,7 @@ else
                                             </span>
                                         }
                                     </td>
-                                    <td class="text-end @(debt.IsMinBelowInterest ? "table-danger" : "")">
-                                        @debt.MinimumPayment.ToString("C")
-                                        @if (debt.IsMinBelowInterest)
-                                        {
-                                            <span title="@MinPaymentWarningText(debt)" class="ms-1">⚠️</span>
-                                        }
-                                    </td>
-                                    <td class="text-end text-muted small">@(debt.TotalMonthlyFees > 0 ? debt.TotalMonthlyFees.ToString("C") : "—")</td>
-                                    <td class="text-end fw-semibold">@debt.TotalMonthlyPayment.ToString("C")</td>
-                                    <td class="text-end fw-semibold">
+                                    <td class="text-end fw-semibold @(debt.IsMinBelowInterest ? "table-danger" : "")">
                                         @{
                                             var nextPmt = activeResult.NextPaymentAmounts.TryGetValue(debt.Id, out var np) ? np : debt.MinimumPayment;
                                             var isFocus = nextPmt > debt.MinimumPayment;
@@ -196,12 +181,10 @@ else
                                         {
                                             <span class="text-success small ms-1" title="Includes @((nextPmt - debt.MinimumPayment).ToString("C")) extra">★</span>
                                         }
-                                    </td>
-                                    <td class="text-end text-muted">
-                                        @{
-                                            var debtInterest = activeResult.DebtInterestPaid.TryGetValue(debt.Id, out var di) ? di : (decimal?)null;
+                                        @if (debt.IsMinBelowInterest)
+                                        {
+                                            <span title="@MinPaymentWarningText(debt)" class="ms-1">⚠️</span>
                                         }
-                                        @(debtInterest.HasValue ? debtInterest.Value.ToString("C") : "—")
                                     </td>
                                     <td class="text-center">
                                         @if (debt.PaymentMethod == DebtPaymentMethod.AutoDraft)
@@ -231,7 +214,6 @@ else
                                             <span class="text-muted">—</span>
                                         }
                                     </td>
-                                    <td class="text-end">@(payoffDate?.ToString("MMM yyyy") ?? "—")</td>
                                     <td class="text-end text-nowrap">
                                         <button class="btn btn-sm btn-outline-info me-1" @onclick="() => OpenSchedule(debt, activeResult)" title="View payment schedule">Schedule</button>
                                         @if (debt.PaymentMethod == DebtPaymentMethod.Manual && debt.BankAccountId.HasValue)
@@ -251,22 +233,13 @@ else
                                 <td class="text-end">@group.Debts.Sum(d => d.Balance).ToString("C")</td>
                                 <td></td>
                                 <td></td>
-                                <td class="text-end">@group.Debts.Sum(d => d.MinimumPayment).ToString("C")</td>
-                                <td class="text-end text-muted small">@(group.Debts.Sum(d => d.TotalMonthlyFees) > 0 ? group.Debts.Sum(d => d.TotalMonthlyFees).ToString("C") : "—")</td>
-                                <td class="text-end fw-semibold">@group.Debts.Sum(d => d.TotalMonthlyPayment).ToString("C")</td>
                                 <td class="text-end text-success">
                                     @{
                                         var totalNextPmt = group.Debts.Sum(d => activeResult.NextPaymentAmounts.TryGetValue(d.Id, out var np) ? np : d.MinimumPayment);
                                     }
                                     @totalNextPmt.ToString("C")
                                 </td>
-                                <td class="text-end text-muted">
-                                    @{
-                                        var totalGroupInterest = group.Debts.Sum(d => activeResult.DebtInterestPaid.TryGetValue(d.Id, out var di) ? di : 0m);
-                                    }
-                                    @totalGroupInterest.ToString("C")
-                                </td>
-                                <td colspan="4"></td>
+                                <td colspan="3"></td>
                             </tr>
                         </tfoot>
                     </table>
@@ -291,8 +264,6 @@ else
                     <th class="text-end">Usage</th>
                     <th class="text-end">Rate</th>
                     <th class="text-end">Min Payment</th>
-                    <th class="text-end">Fees</th>
-                    <th class="text-end">Total Pmt</th>
                     <th class="text-center">Method</th>
                     <th>Bank</th>
                     <th class="text-end">Next Due</th>
@@ -326,15 +297,13 @@ else
                                 </span>
                             }
                         </td>
-                        <td class="text-end @(debt.IsMinBelowInterest ? "table-danger" : "")">
+                        <td class="text-end fw-semibold @(debt.IsMinBelowInterest ? "table-danger" : "")">
                             @debt.MinimumPayment.ToString("C")
                             @if (debt.IsMinBelowInterest)
                             {
                             <span title="@MinPaymentWarningText(debt)" class="ms-1">⚠️</span>
                             }
                         </td>
-                        <td class="text-end text-muted small">@(debt.TotalMonthlyFees > 0 ? debt.TotalMonthlyFees.ToString("C") : "—")</td>
-                        <td class="text-end fw-semibold">@debt.TotalMonthlyPayment.ToString("C")</td>
                         <td class="text-center">
                             @if (debt.PaymentMethod == DebtPaymentMethod.AutoDraft)
                             {
@@ -393,8 +362,6 @@ else
                     <td></td>
                     <td></td>
                     <td class="text-end">@_ungrouped.Sum(d => d.MinimumPayment).ToString("C")</td>
-                    <td class="text-end text-muted small">@(_ungrouped.Sum(d => d.TotalMonthlyFees) > 0 ? _ungrouped.Sum(d => d.TotalMonthlyFees).ToString("C") : "—")</td>
-                    <td class="text-end fw-semibold">@_ungrouped.Sum(d => d.TotalMonthlyPayment).ToString("C")</td>
                     <td colspan="4"></td>
                 </tr>
             </tfoot>
@@ -727,10 +694,37 @@ else
                     <div class="mb-3">
                         <label class="form-label">Minimum Payment</label>
                         <input class="form-control" type="number" step="0.01" @bind="_editingDebt.MinimumPayment" />
-                        @if (_editingDebt.IsMinBelowInterest)
+                        @if (_editingDebt.Balance > 0)
                         {
-                            <div class="alert @(_editingDebt.HasActivePromo(_today) ? "alert-warning" : "alert-danger") mt-2 mb-0 py-2 small">
-                                ⚠️ @MinPaymentWarningText(_editingDebt)
+                            <div class="border rounded p-2 mt-2 mb-0 @(_editingDebt.IsMinBelowInterest ? (_editingDebt.HasActivePromo(_today) ? "border-warning" : "border-danger") : "")">
+                                <div class="small text-muted mb-1">Of this payment, next cycle:</div>
+                                <div class="d-flex justify-content-between small">
+                                    <span>Interest</span>
+                                    <span class="text-danger">@_editingDebt.MonthlyInterest.ToString("C")</span>
+                                </div>
+                                <div class="d-flex justify-content-between small">
+                                    <span>Principal</span>
+                                    <span class="@(_editingDebt.MonthlyPrincipalPortion >= 0 ? "text-success" : "text-danger fw-semibold")">@_editingDebt.MonthlyPrincipalPortion.ToString("C")</span>
+                                </div>
+                                @if (_editingDebt.HasActivePromo(_today))
+                                {
+                                    <hr class="my-1" />
+                                    <div class="small text-muted mb-1">After the promo ends (@((_editingDebt.InterestRate * 100).ToString("F2"))%):</div>
+                                    <div class="d-flex justify-content-between small">
+                                        <span>Interest</span>
+                                        <span class="text-danger">@_editingDebt.StandardMonthlyInterest.ToString("C")</span>
+                                    </div>
+                                    <div class="d-flex justify-content-between small">
+                                        <span>Principal</span>
+                                        <span class="@(_editingDebt.StandardMonthlyPrincipalPortion >= 0 ? "text-success" : "text-danger fw-semibold")">@_editingDebt.StandardMonthlyPrincipalPortion.ToString("C")</span>
+                                    </div>
+                                }
+                                @if (_editingDebt.IsMinBelowInterest)
+                                {
+                                    <div class="small mt-1 @(_editingDebt.HasActivePromo(_today) ? "text-warning-emphasis" : "text-danger")">
+                                        ⚠️ @MinPaymentWarningText(_editingDebt)
+                                    </div>
+                                }
                             </div>
                         }
                     </div>
@@ -935,6 +929,10 @@ else
                                 <button class="btn btn-sm btn-outline-success" @onclick="AddFeeToList">+ Add Fee</button>
                             </div>
                         </div>
+                        <div class="text-end text-muted small mt-1">
+                            @{ var editingTotalPmt = _editingDebt.MinimumPayment + _editingFees.Where(f => f.IsActive).Sum(f => f.Amount); }
+                            Total monthly payment (min + fees): <strong>@editingTotalPmt.ToString("C")</strong>
+                        </div>
                     </div>
                     @* ── Sharing section ── *@
                     @if (_editingDebt.Id > 0)
@@ -1068,13 +1066,24 @@ else
     <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.4)">
         <div class="modal-dialog">
             <div class="modal-content">
-                <div class="modal-header"><h5 class="modal-title">Delete Debt</h5></div>
+                <div class="modal-header">
+                    <h5 class="modal-title">Delete Debt</h5>
+                    <button type="button" class="btn-close" @onclick="() => _deleteDebtTarget = null"></button>
+                </div>
                 <div class="modal-body">
                     <p>Delete <strong>@_deleteDebtTarget.Name</strong>? This cannot be undone.</p>
+                    <p class="text-muted small mb-0">
+                        What should happen to its <strong>upcoming</strong> transactions on the Transactions page?
+                    </p>
                 </div>
-                <div class="modal-footer">
-                    <button class="btn btn-secondary" @onclick="() => _deleteDebtTarget = null">Cancel</button>
-                    <button class="btn btn-danger" @onclick="DeleteDebtConfirmed">Delete</button>
+                <div class="modal-footer flex-column align-items-stretch gap-2">
+                    <button class="btn btn-outline-secondary w-100" @onclick="() => DeleteDebtConfirmed(deleteFutureTransactions: true)">
+                        Delete them too
+                    </button>
+                    <button class="btn btn-outline-primary w-100" @onclick="() => DeleteDebtConfirmed(deleteFutureTransactions: false)">
+                        Keep them (as standalone manual transactions)
+                    </button>
+                    <button class="btn btn-secondary w-100" @onclick="() => _deleteDebtTarget = null">Cancel</button>
                 </div>
             </div>
         </div>
@@ -1565,18 +1574,25 @@ else
         else _debtSharedWithGroupIds.Remove(groupId);
     }
 
-    private async Task DeleteDebtConfirmed()
+    private async Task DeleteDebtConfirmed(bool deleteFutureTransactions)
     {
         if (_deleteDebtTarget is null) return;
         var debt = _deleteDebtTarget;
+
+        // Resolve the debt's still-upcoming Transactions-page entries before the debt itself is gone —
+        // either drop them with it, or detach + keep them as standalone manual entries. This also covers
+        // manually-overridden dates, which a group re-push (below) never touches.
+        if (deleteFutureTransactions)
+            await CashFlowRepo.DeleteAllProjectedForSourceAsync(debt.Id, _userId, TransactionCategory.DebtPayment);
+        else
+            await CashFlowRepo.DetachSourceKeepAsManualAsync(debt.Id, _userId, TransactionCategory.DebtPayment);
+
         await DebtRepo.DeleteAsync(debt.Id, _userId);
         _deleteDebtTarget = null;
         await LoadAsync();
-        // Re-push the group (recalculates without this debt) or delete standalone projections
+        // Re-push the group so the remaining debts' schedules recalculate without this one.
         if (debt.GroupId.HasValue)
             await DebtProjectionSvc.PushGroupAsync(debt.GroupId.Value, _userId);
-        else
-            await DebtProjectionSvc.DeleteDebtProjectionsAsync(debt.Id, _userId);
     }
 
     private void AddFeeToList()
