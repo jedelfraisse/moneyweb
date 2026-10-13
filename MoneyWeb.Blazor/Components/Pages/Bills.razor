@@ -9,7 +9,7 @@
 @inject IBillRepository BillRepo
 @inject IBankAccountRepository AccountRepo
 @inject ICashFlowRepository CashFlowRepo
-@inject BillProjectionService ProjectionSvc
+@inject IBillCashFlowSyncService SyncSvc
 @inject SqidsEncoder<int> Sqids
 
 <PageTitle>Bills – MoneyWeb</PageTitle>
@@ -23,9 +23,40 @@
             <button class="btn @(_billSort == "name" ? "btn-secondary" : "btn-outline-secondary")"
                     @onclick='() => _billSort = "name"'>🔤 Name</button>
         </div>
+        <button class="btn btn-outline-secondary" disabled="@_checkingCashFlow" @onclick="CheckCashFlowAsync"
+                title="Make sure each bill's upcoming payments are in its bank account — adds missing entries and removes outdated ones. Past-due, submitted and hand-edited entries are left alone.">
+            @if (_checkingCashFlow) { <span class="spinner-border spinner-border-sm me-1"></span> }
+            🔄 Check Cash Flow
+        </button>
         <button class="btn btn-primary" @onclick="OpenAddBill">+ Add Bill</button>
     </div>
 </div>
+
+@if (_syncResult is { } sync)
+{
+    <div class="alert @(sync.Changed || _openMissingCashFlow.Count > 0 ? "alert-info" : "alert-success") alert-dismissible small">
+        @if (sync.Changed)
+        {
+            <span>
+                Checked @sync.BillsChecked bill@(sync.BillsChecked == 1 ? "" : "s") —
+                added @sync.Added missing entr@(sync.Added == 1 ? "y" : "ies"),
+                removed @sync.Removed outdated entr@(sync.Removed == 1 ? "y" : "ies").
+            </span>
+        }
+        else
+        {
+            <span>✓ Checked @sync.BillsChecked bill@(sync.BillsChecked == 1 ? "" : "s") — the cash flow already matches.</span>
+        }
+        @if (_openMissingCashFlow.Count > 0)
+        {
+            <div class="mt-1">
+                ⚠ @_openMissingCashFlow.Count open bill@(_openMissingCashFlow.Count == 1 ? " has" : "s have") no cash-flow entry —
+                flagged below. Confirm or remove @(_openMissingCashFlow.Count == 1 ? "it" : "them").
+            </div>
+        }
+        <button type="button" class="btn-close" @onclick="() => _syncResult = null"></button>
+    </div>
+}
 
 @if (_bills.Count == 0)
 {
@@ -321,11 +352,6 @@ else
     }
 }
 
-@if (_errorMessage is not null)
-{
-    <div class="alert alert-danger mt-3">@_errorMessage</div>
-}
-
 <!-- ── Add / Edit Bill Modal ──────────────────────────────────────── -->
 @if (_showModal)
 {
@@ -556,9 +582,10 @@ else
     private List<BillOccurrence> _openOccurrences = [];
     // Open occurrences whose cash-flow transaction is gone (cleared/skipped on the Transactions page) — flagged so they can be closed out.
     private HashSet<int> _openMissingCashFlow = [];
+    private bool _checkingCashFlow;
+    private BillSyncResult? _syncResult;
     private HashSet<int> _expanded = [];
     private Dictionary<int, List<BillOccurrence>> _occurrences = [];
-    private string? _errorMessage;
     private string _billSort = "date";   // "date" | "name"
 
     // Bill modal
@@ -677,13 +704,10 @@ else
         CloseModal();
         await LoadAsync();
 
-        // Auto-push cash flow projections when a bank account is linked
-        if (_editing.BankAccountId.HasValue)
-        {
-            var saved = _bills.FirstOrDefault(b => b.Id == _editing.Id);
-            if (saved is not null)
-                await PushToCalendarAsync(saved);
-        }
+        // Bring the bill's projected cash-flow entries in line with its (possibly changed) schedule, account and amount
+        var saved = _bills.FirstOrDefault(b => b.Id == _editing.Id);
+        if (saved is not null)
+            await SyncSvc.SyncAsync(saved, user.Id);
     }
 
     // ── Delete ──────────────────────────────────────────────────────
@@ -927,42 +951,23 @@ else
         await LoadOpenOccurrencesAsync(user.Id);
     }
 
-    // ── Push to Cash Flow ───────────────────────────────────────────
+    // ── Check Cash Flow ─────────────────────────────────────────────
 
-    private async Task PushToCalendarAsync(Bill bill)
+    private async Task CheckCashFlowAsync()
     {
-        if (!bill.BankAccountId.HasValue) return;
         var user = await CurrentUserService.GetCurrentUserAsync();
         if (user is null) return;
-
-        var today = DateOnly.FromDateTime(DateTime.Today);
-        var horizon = today.AddMonths(12);
-
-        await CashFlowRepo.DeleteProjectedForSourceAsync(bill.Id, user.Id, TransactionCategory.Bill);
-
-        // Start projections from after the last recorded occurrence so we don't recreate entries the user has already paid
-        var startFrom = bill.NextFromAfterLastOccurrence(bill.LastOccurrenceDueDate, today);
-        if (startFrom < today) startFrom = today;
-
-        var dates = ProjectionSvc.GetOccurrenceDates(bill, startFrom, horizon);
-        var transactions = dates.Select(d => new CashFlowTransaction
+        _checkingCashFlow = true;
+        _syncResult = null;
+        try
         {
-            UserId = user.Id,
-            BankAccountId = bill.BankAccountId!.Value,
-            TransactionDate = d,
-            Description = $"Bill: {bill.Name}",
-            Amount = -(bill.Amount),
-            Category = TransactionCategory.Bill,
-            ReferenceId = bill.Id,
-            IsProjected = true,
-            IsAutoDraft = bill.PaymentMethod == DebtPaymentMethod.AutoDraft
-        }).ToList();
-
-        if (transactions.Count > 0)
-            await CashFlowRepo.BulkInsertProjectedAsync(transactions);
-
-        _errorMessage = null;
-        StateHasChanged();
+            _syncResult = await SyncSvc.SyncAllAsync(user.Id);
+            await LoadAsync();
+        }
+        finally
+        {
+            _checkingCashFlow = false;
+        }
     }
 
     // ── Helpers ─────────────────────────────────────────────────────
