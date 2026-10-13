@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.DataProtection.KeyManagement;
 using MoneyWeb.Data;
 using MoneyWeb.Blazor.Auth;
 using MoneyWeb.Blazor.Components;
@@ -67,6 +69,14 @@ var connectionString = builder.Configuration.GetConnectionString("moneyweb")
     ?? throw new InvalidOperationException("Connection string 'moneyweb' not found.");
 
 builder.Services.AddMoneyWebData(connectionString);
+
+// Persist Data Protection keys (which encrypt the auth cookie) to SQL. Otherwise the shared IIS host
+// keeps them in memory and regenerates them on every app-pool recycle or deploy, silently logging
+// everyone out well before the 30-day cookie expiry.
+builder.Services.AddDataProtection()
+    .SetApplicationName("MoneyWeb")
+    .Services.Configure<KeyManagementOptions>(o =>
+        o.XmlRepository = new SqlDataProtectionKeyRepository(connectionString));
 
 var app = builder.Build();
 
