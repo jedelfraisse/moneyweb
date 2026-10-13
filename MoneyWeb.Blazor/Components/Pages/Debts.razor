@@ -15,6 +15,8 @@
 @inject ICashFlowRepository CashFlowRepo
 @inject IShareRepository ShareRepo
 @inject IDebtProjectionService DebtProjectionSvc
+@inject ISinkingFundProjectionService SinkingFundProjectionSvc
+@inject ISinkingFundRepository SinkingFundRepo
 @inject SqidsEncoder<int> Sqids
 
 <PageTitle>Debts – MoneyWeb</PageTitle>
@@ -148,7 +150,13 @@ else
                                                 disabled="@(idx == orderedDebts.Count - 1)"
                                                 @onclick="() => MoveDebt(orderedDebts, idx, 1)">▼</button>
                                     </td>
-                                    <td>@debt.Name</td>
+                                    <td>
+                                        @debt.Name
+                                        @if (debt.TotalMonthlyFees > 0)
+                                        {
+                                            <span class="badge bg-secondary-subtle text-secondary-emphasis small ms-1" title="@FeesTooltipText(debt)">🧾 @debt.TotalMonthlyFees.ToString("C")</span>
+                                        }
+                                    </td>
                                     <td class="text-end">@debt.Balance.ToString("C")</td>
                                     <td class="text-end">
                                         @if (debt.CreditUsage.HasValue)
@@ -263,7 +271,7 @@ else
                     <th class="text-end">Balance</th>
                     <th class="text-end">Usage</th>
                     <th class="text-end">Rate</th>
-                    <th class="text-end">Min Payment</th>
+                    <th class="text-end">Total Payment</th>
                     <th class="text-center">Method</th>
                     <th>Bank</th>
                     <th class="text-end">Next Due</th>
@@ -274,7 +282,13 @@ else
                 @foreach (var debt in _ungrouped)
                 {
                     <tr>
-                        <td>@debt.Name</td>
+                        <td>
+                            @debt.Name
+                            @if (debt.TotalMonthlyFees > 0)
+                            {
+                                <span class="badge bg-secondary-subtle text-secondary-emphasis small ms-1" title="@FeesTooltipText(debt)">🧾 @debt.TotalMonthlyFees.ToString("C")</span>
+                            }
+                        </td>
                         <td class="text-end">@debt.Balance.ToString("C")</td>
                         <td class="text-end">
                             @if (debt.CreditUsage.HasValue)
@@ -297,8 +311,8 @@ else
                                 </span>
                             }
                         </td>
-                        <td class="text-end fw-semibold @(debt.IsMinBelowInterest ? "table-danger" : "")">
-                            @debt.MinimumPayment.ToString("C")
+                        <td class="text-end fw-semibold @(debt.IsMinBelowInterest ? "table-danger" : "")" title="@(debt.TotalMonthlyFees > 0 ? $"Min payment {debt.MinimumPayment:C} + fees {debt.TotalMonthlyFees:C}" : "")">
+                            @debt.TotalMonthlyPayment.ToString("C")
                             @if (debt.IsMinBelowInterest)
                             {
                             <span title="@MinPaymentWarningText(debt)" class="ms-1">⚠️</span>
@@ -361,7 +375,7 @@ else
                     <td class="text-end">@_ungrouped.Sum(d => d.Balance).ToString("C")</td>
                     <td></td>
                     <td></td>
-                    <td class="text-end">@_ungrouped.Sum(d => d.MinimumPayment).ToString("C")</td>
+                    <td class="text-end">@_ungrouped.Sum(d => d.TotalMonthlyPayment).ToString("C")</td>
                     <td colspan="4"></td>
                 </tr>
             </tfoot>
@@ -631,7 +645,7 @@ else
 @if (_showDebtModal)
 {
     <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.4)">
-        <div class="modal-dialog">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title">@(_editingDebt.Id == 0 ? "Add" : "Edit") Debt</h5>
@@ -854,53 +868,115 @@ else
                         </label>
                         @if (_editingFees.Any())
                         {
-                            <table class="table table-sm mb-2">
-                                <thead>
-                                    <tr>
-                                        <th>Name</th>
-                                        <th>Category</th>
-                                        <th class="text-end">Amount/mo</th>
-                                        <th class="text-center">Active</th>
-                                        <th></th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach (var fee in _editingFees)
-                                    {
-                                        <tr>
-                                            <td><input class="form-control form-control-sm" @bind="fee.Name" /></td>
-                                            <td>
-                                                <select class="form-select form-select-sm" @bind="fee.Category">
-                                                    <option value="@DebtFeeCategory.PropertyTax">Property Tax</option>
-                                                    <option value="@DebtFeeCategory.HomeownersInsurance">Homeowners Ins.</option>
-                                                    <option value="@DebtFeeCategory.PMI">PMI</option>
-                                                    <option value="@DebtFeeCategory.HOA">HOA</option>
-                                                    <option value="@DebtFeeCategory.FloodInsurance">Flood Ins.</option>
-                                                    <option value="@DebtFeeCategory.Other">Other</option>
-                                                </select>
-                                            </td>
-                                            <td class="text-end" style="width:8rem">
-                                                <input class="form-control form-control-sm text-end" type="number" step="0.01"
-                                                       @bind="fee.Amount" />
-                                            </td>
-                                            <td class="text-center">
-                                                <input type="checkbox" class="form-check-input" @bind="fee.IsActive" />
-                                            </td>
-                                            <td>
-                                                <button class="btn btn-sm btn-outline-danger px-1 py-0"
-                                                        @onclick="() => RemoveFee(fee)">✕</button>
-                                            </td>
-                                        </tr>
-                                    }
-                                </tbody>
-                                <tfoot>
-                                    <tr>
-                                        <td colspan="2" class="text-muted small">Total Fees</td>
-                                        <td class="text-end fw-semibold">@_editingFees.Where(f => f.IsActive).Sum(f => f.Amount).ToString("C")</td>
-                                        <td colspan="2"></td>
-                                    </tr>
-                                </tfoot>
-                            </table>
+                            @foreach (var fee in _editingFees)
+                            {
+                                <div class="border rounded p-2 mb-2">
+                                    @* ── Line 1: what it is, how much, how often ── *@
+                                    <div class="d-flex gap-2 align-items-center flex-wrap">
+                                        <input class="form-control form-control-sm" style="max-width:11rem" placeholder="Fee name" @bind="fee.Name" />
+                                        <select class="form-select form-select-sm" style="max-width:10rem" @bind="fee.Category">
+                                            <option value="@DebtFeeCategory.PropertyTax">Property Tax</option>
+                                            <option value="@DebtFeeCategory.HomeownersInsurance">Homeowners Ins.</option>
+                                            <option value="@DebtFeeCategory.PMI">PMI</option>
+                                            <option value="@DebtFeeCategory.HOA">HOA</option>
+                                            <option value="@DebtFeeCategory.FloodInsurance">Flood Ins.</option>
+                                            <option value="@DebtFeeCategory.Other">Other</option>
+                                        </select>
+                                        <input class="form-control form-control-sm text-end" style="max-width:7rem" type="number" step="0.01"
+                                               @bind="fee.Amount" @bind:after="() => SyncFeeToFundAsync(fee)" />
+                                        <select class="form-select form-select-sm" style="max-width:8rem" @bind="fee.Frequency" @bind:after="() => SyncFeeToFundAsync(fee)">
+                                            <option value="@DebtFeeFrequency.Monthly">Monthly</option>
+                                            <option value="@DebtFeeFrequency.Quarterly">Quarterly</option>
+                                            <option value="@DebtFeeFrequency.Yearly">Yearly</option>
+                                        </select>
+                                        @if (fee.Frequency != DebtFeeFrequency.Monthly)
+                                        {
+                                            <select class="form-select form-select-sm" style="width:5.5rem" @bind="fee.DueMonth" @bind:after="() => SyncFeeToFundAsync(fee)">
+                                                <option value="">Month</option>
+                                                <option value="1">Jan</option>
+                                                <option value="2">Feb</option>
+                                                <option value="3">Mar</option>
+                                                <option value="4">Apr</option>
+                                                <option value="5">May</option>
+                                                <option value="6">Jun</option>
+                                                <option value="7">Jul</option>
+                                                <option value="8">Aug</option>
+                                                <option value="9">Sep</option>
+                                                <option value="10">Oct</option>
+                                                <option value="11">Nov</option>
+                                                <option value="12">Dec</option>
+                                            </select>
+                                            <input class="form-control form-control-sm" style="width:4rem" type="number" min="1" max="31"
+                                                   placeholder="Day" @bind="fee.DueDay" @bind:after="() => SyncFeeToFundAsync(fee)" />
+                                        }
+                                        <div class="form-check ms-auto mb-0 text-nowrap">
+                                            <input type="checkbox" class="form-check-input" id="feeActive-@fee.GetHashCode()" @bind="fee.IsActive" />
+                                            <label class="form-check-label small" for="feeActive-@fee.GetHashCode()">Active</label>
+                                        </div>
+                                        @if (ReferenceEquals(_confirmingFeeRemoval, fee))
+                                        {
+                                            <span class="small text-muted text-nowrap">Delete linked fund too?</span>
+                                            <button class="btn btn-sm btn-outline-danger px-1 py-0" type="button" @onclick="() => RemoveFeeAndDeleteFund(fee)">Yes</button>
+                                            <button class="btn btn-sm btn-outline-secondary px-1 py-0" type="button" @onclick="() => RemoveFee(fee)">Keep fund</button>
+                                            <button class="btn btn-sm btn-link px-1 py-0" type="button" @onclick="() => _confirmingFeeRemoval = null">Cancel</button>
+                                        }
+                                        else
+                                        {
+                                            <button class="btn btn-sm btn-outline-danger px-1 py-0" type="button" @onclick="() => StartRemoveFee(fee)">✕</button>
+                                        }
+                                    </div>
+                                    @* ── Line 2: what pays for it ── *@
+                                    <div class="d-flex gap-2 align-items-center flex-wrap mt-1">
+                                        <span class="text-muted small">Funded by:</span>
+                                        @if (ReferenceEquals(_creatingSinkingFundFor, fee))
+                                        {
+                                            <input class="form-control form-control-sm" style="max-width:11rem" placeholder="Sinking fund name"
+                                                   @bind="_newSinkingFundName" @bind:event="oninput" />
+                                            <select class="form-select form-select-sm" style="max-width:10rem" @bind="_newFundingAccountIdStr">
+                                                <option value="">Pays from…</option>
+                                                @foreach (var acct in _bankAccounts)
+                                                {
+                                                    <option value="@acct.Id">@acct.Name</option>
+                                                }
+                                            </select>
+                                            <button class="btn btn-sm btn-outline-success px-1 py-0" type="button"
+                                                    title="Create" disabled="@string.IsNullOrWhiteSpace(_newSinkingFundName)"
+                                                    @onclick="() => ConfirmCreateSinkingFundForFee(fee)">✓</button>
+                                            <button class="btn btn-sm btn-outline-secondary px-1 py-0" type="button"
+                                                    title="Cancel" @onclick="() => _creatingSinkingFundFor = null">✕</button>
+                                            <div class="text-muted small w-100">
+                                                Which account this fee actually comes out of — you'll get a monthly reminder to set the
+                                                amount aside there. Want it swept into a separate savings account instead? Link that up
+                                                on the <a href="/sinking-funds">Sinking Funds</a> page afterward. Skip the account to just
+                                                track the fund without projecting any transactions.
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <select class="form-select form-select-sm" style="max-width:12rem" @bind="fee.SinkingFundId">
+                                                <option value="">— None —</option>
+                                                @foreach (var fund in _sinkingFunds)
+                                                {
+                                                    <option value="@fund.Id">@fund.Name</option>
+                                                }
+                                            </select>
+                                            @if (!fee.SinkingFundId.HasValue)
+                                            {
+                                                <button class="btn btn-sm btn-outline-secondary px-1 py-0 text-nowrap" type="button"
+                                                        title="Create a Sinking Fund for this fee, sized to its amount and due date"
+                                                        @onclick="() => StartCreateSinkingFundForFee(fee)">+ New</button>
+                                            }
+                                            else
+                                            {
+                                                <a href="/sinking-funds" class="small">Manage →</a>
+                                            }
+                                        }
+                                    </div>
+                                </div>
+                            }
+                            <div class="text-end text-muted small mb-2">
+                                Total Fees (avg/mo): <strong>@_editingFees.Where(f => f.IsActive).Sum(f => f.MonthlyEquivalent).ToString("C")</strong>
+                            </div>
                         }
                         else
                         {
@@ -930,8 +1006,8 @@ else
                             </div>
                         </div>
                         <div class="text-end text-muted small mt-1">
-                            @{ var editingTotalPmt = _editingDebt.MinimumPayment + _editingFees.Where(f => f.IsActive).Sum(f => f.Amount); }
-                            Total monthly payment (min + fees): <strong>@editingTotalPmt.ToString("C")</strong>
+                            @{ var editingTotalPmt = _editingDebt.MinimumPayment + _editingFees.Where(f => f.IsActive).Sum(f => f.MonthlyEquivalent); }
+                            Total monthly payment (min + fees, averaged for non-monthly ones): <strong>@editingTotalPmt.ToString("C")</strong>
                         </div>
                     </div>
                     @* ── Sharing section ── *@
@@ -939,29 +1015,41 @@ else
                     {
                         <div class="mb-3">
                             <label class="form-label fw-semibold">Who Can See This</label>
+                            <div class="text-muted small mb-2">
+                                Grant view access to an individual person or an entire group. Want to share with
+                                someone who isn't listed below? Add them as a contact on the <a href="/sharing">Sharing</a> page first.
+                            </div>
                             @if (!_shareableUsers.Any() && !_shareableGroups.Any())
                             {
                                 <p class="text-muted small mb-0">No contacts or groups yet. Add contacts on the <a href="/sharing">Sharing</a> page.</p>
                             }
                             else
                             {
-                                @foreach (var u in _shareableUsers)
+                                @if (_shareableUsers.Any())
                                 {
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" id="share-u-@u.UserId"
-                                               checked="@_debtSharedWithUserIds.Contains(u.UserId)"
-                                               @onchange="e => ToggleDebtShareUser(u.UserId, (bool)(e.Value ?? false))" />
-                                        <label class="form-check-label" for="share-u-@u.UserId">@u.DisplayName</label>
-                                    </div>
+                                    <div class="text-muted small text-uppercase fw-bold mb-1">People</div>
+                                    @foreach (var u in _shareableUsers)
+                                    {
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="share-u-@u.UserId"
+                                                   checked="@_debtSharedWithUserIds.Contains(u.UserId)"
+                                                   @onchange="e => ToggleDebtShareUser(u.UserId, (bool)(e.Value ?? false))" />
+                                            <label class="form-check-label" for="share-u-@u.UserId">@u.DisplayName</label>
+                                        </div>
+                                    }
                                 }
-                                @foreach (var g in _shareableGroups)
+                                @if (_shareableGroups.Any())
                                 {
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" id="share-g-@g.Id"
-                                               checked="@_debtSharedWithGroupIds.Contains(g.Id)"
-                                               @onchange="e => ToggleDebtShareGroup(g.Id, (bool)(e.Value ?? false))" />
-                                        <label class="form-check-label" for="share-g-@g.Id"><span class="badge bg-secondary me-1">Group</span>@g.Name</label>
-                                    </div>
+                                    <div class="text-muted small text-uppercase fw-bold mb-1 mt-2">Groups</div>
+                                    @foreach (var g in _shareableGroups)
+                                    {
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="share-g-@g.Id"
+                                                   checked="@_debtSharedWithGroupIds.Contains(g.Id)"
+                                                   @onchange="e => ToggleDebtShareGroup(g.Id, (bool)(e.Value ?? false))" />
+                                            <label class="form-check-label" for="share-g-@g.Id">@g.Name</label>
+                                        </div>
+                                    }
                                 }
                             }
                         </div>
@@ -1105,6 +1193,23 @@ else
         ? $"Min payment ({debt.MinimumPayment:C}) won't cover interest once the promo ends and the rate reverts to {debt.InterestRate:P2} (~{debt.StandardMonthlyInterest:C}/mo) — balance will start growing then unless you pay more now."
         : $"Min payment ({debt.MinimumPayment:C}) does not cover monthly interest ({debt.MonthlyInterest:C}) — balance will keep growing!";
 
+    /// <summary>List-view tooltip for the 🧾 fees badge (which shows the amortized monthly average) —
+    /// one line per active recurring fee at its actual per-occurrence amount/frequency, noting its
+    /// linked Sinking Fund (if any).</summary>
+    private static string FeesTooltipText(Debt debt) => string.Join("\n", debt.Fees
+        .Where(f => f.IsActive)
+        .Select(f =>
+        {
+            var cadence = f.Frequency switch
+            {
+                DebtFeeFrequency.Quarterly => "quarterly",
+                DebtFeeFrequency.Yearly => "yearly",
+                _ => "monthly"
+            };
+            var line = $"{f.Name}: {f.Amount:C} ({cadence})";
+            return f.SinkingFundName is null ? line : $"{line} — funded by {f.SinkingFundName}";
+        }));
+
     private List<DebtGroup> _groups = [];
     private List<Debt> _ungrouped = [];
     private List<Debt> _sharedDebts = [];
@@ -1186,6 +1291,11 @@ else
     private string _newFeeName = string.Empty;
     private decimal _newFeeAmount;
     private DebtFeeCategory _newFeeCategory = DebtFeeCategory.Other;
+    private List<SinkingFund> _sinkingFunds = [];
+    private DebtFee? _creatingSinkingFundFor;
+    private DebtFee? _confirmingFeeRemoval;
+    private string _newSinkingFundName = string.Empty;
+    private string _newFundingAccountIdStr = string.Empty;
 
     // Sharing state for debt modal
     private List<(int UserId, string DisplayName)> _shareableUsers = [];
@@ -1222,6 +1332,8 @@ else
 
         _shareableUsers = (await ShareRepo.GetShareableUsersAsync(_userId)).ToList();
         _shareableGroups = (await UserGroupRepo.GetAllForUserAsync(_userId)).ToList();
+
+        _sinkingFunds = (await SinkingFundRepo.GetAllAsync(_userId)).ToList();
 
         _loading = false;
     }
@@ -1419,6 +1531,10 @@ else
         _newFeeName = string.Empty;
         _newFeeAmount = 0;
         _newFeeCategory = DebtFeeCategory.Other;
+        _creatingSinkingFundFor = null;
+        _confirmingFeeRemoval = null;
+        _newSinkingFundName = string.Empty;
+        _newFundingAccountIdStr = string.Empty;
         _existingDebtShares = [];
         _debtSharedWithUserIds = [];
         _debtSharedWithGroupIds = [];
@@ -1450,12 +1566,18 @@ else
         _editingFees = d.Fees.Select(f => new DebtFee
         {
             Id = f.Id, DebtId = f.DebtId, UserId = f.UserId,
-            Name = f.Name, Amount = f.Amount, Category = f.Category, IsActive = f.IsActive
+            Name = f.Name, Amount = f.Amount, Category = f.Category, IsActive = f.IsActive,
+            Frequency = f.Frequency, DueDay = f.DueDay, DueMonth = f.DueMonth,
+            SinkingFundId = f.SinkingFundId
         }).ToList();
         _deletedFeeIds = [];
         _newFeeName = string.Empty;
         _newFeeAmount = 0;
         _newFeeCategory = DebtFeeCategory.Other;
+        _creatingSinkingFundFor = null;
+        _confirmingFeeRemoval = null;
+        _newSinkingFundName = string.Empty;
+        _newFundingAccountIdStr = string.Empty;
 
         _existingDebtShares = (await ShareRepo.GetSharesForEntityAsync(ShareEntityType.Debt, d.Id)).ToList();
         _debtSharedWithUserIds = [.. _existingDebtShares.Where(s => s.SharedWithUserId.HasValue).Select(s => s.SharedWithUserId!.Value)];
@@ -1610,11 +1732,149 @@ else
         _newFeeCategory = DebtFeeCategory.Other;
     }
 
+    /// <summary>Delete-button entry point — if the fee has a linked Sinking Fund, ask what should
+    /// happen to it (it may hold real savings) rather than silently leaving it orphaned.</summary>
+    private void StartRemoveFee(DebtFee fee)
+    {
+        if (fee.SinkingFundId.HasValue)
+            _confirmingFeeRemoval = fee;
+        else
+            RemoveFee(fee);
+    }
+
     private void RemoveFee(DebtFee fee)
     {
         _editingFees.Remove(fee);
         if (fee.Id > 0)
             _deletedFeeIds.Add(fee.Id);
+        _confirmingFeeRemoval = null;
+    }
+
+    private async Task RemoveFeeAndDeleteFund(DebtFee fee)
+    {
+        var fundId = fee.SinkingFundId;
+        RemoveFee(fee);
+        if (fundId is null) return;
+
+        var fund = _sinkingFunds.FirstOrDefault(f => f.Id == fundId.Value);
+        if (fund is not null && (fund.BankAccountId.HasValue || fund.FundingAccountId.HasValue))
+        {
+            await CashFlowRepo.DeleteProjectedForSourceAsync(fund.Id, _userId, TransactionCategory.SinkingFundPayment);
+            await CashFlowRepo.DeleteProjectedForSourceAsync(fund.Id, _userId, TransactionCategory.SinkingFundContribution);
+        }
+        await SinkingFundRepo.DeleteAsync(fundId.Value, _userId);
+        _sinkingFunds = (await SinkingFundRepo.GetAllAsync(_userId)).ToList();
+    }
+
+    /// <summary>
+    /// Keeps a fee's linked Sinking Fund's target/frequency/due date matching the fee whenever the fee's
+    /// own amount, frequency, or due date changes — the fee is the source of truth for what's actually
+    /// owed, the fund just tracks toward it. Deliberately does NOT run when merely picking a different
+    /// *existing* fund from the dropdown — that fund might be a shared/general-purpose one, and instantly
+    /// overwriting its target the moment it's linked would be a much bigger surprise than syncing edits
+    /// made after the fact.
+    /// </summary>
+    private async Task SyncFeeToFundAsync(DebtFee fee)
+    {
+        if (!fee.SinkingFundId.HasValue) return;
+        var fund = _sinkingFunds.FirstOrDefault(f => f.Id == fee.SinkingFundId.Value);
+        if (fund is null || fee.Amount <= 0) return;
+
+        fund.TargetAmount = fee.Amount;
+        fund.Frequency = fee.Frequency switch
+        {
+            DebtFeeFrequency.Quarterly => SinkingFundFrequency.Quarterly,
+            DebtFeeFrequency.Yearly    => SinkingFundFrequency.Annual,
+            _                          => SinkingFundFrequency.Monthly
+        };
+        fund.NextDueDate = NextFeeOccurrence(fee);
+
+        await SinkingFundRepo.UpdateAsync(fund);
+        if (fund.BankAccountId.HasValue || fund.FundingAccountId.HasValue)
+            await SinkingFundProjectionSvc.PushAsync(fund, _userId, _horizonMonths);
+    }
+
+    /// <summary>
+    /// Issue #16: "start saving for this fee" — opens an inline name prompt (rather than silently
+    /// auto-creating) so the user chooses what the new Sinking Fund is actually called.
+    /// </summary>
+    private void StartCreateSinkingFundForFee(DebtFee fee)
+    {
+        _creatingSinkingFundFor = fee;
+        _newSinkingFundName = string.IsNullOrWhiteSpace(fee.Name)
+            ? $"{_editingDebt.Name} Fund"
+            : $"{_editingDebt.Name} — {fee.Name}";
+    }
+
+    /// <summary>
+    /// Creates a Sinking Fund sized to the fee's amount, due on its actual next occurrence, and links the
+    /// fee to it. Leaving MonthlyContribution unset lets the fund's own auto-calculate (TargetAmount ÷
+    /// months until NextDueDate) do the "Monthly → full amount, Quarterly → amount/3, Yearly → amount/12"
+    /// math for us — no separate formula needed here as long as NextDueDate lands the right number of
+    /// months out.
+    ///
+    /// The account picked here becomes FundingAccountId ("Transfer From" in the Sinking Funds model),
+    /// deliberately not BankAccountId ("Savings Account") — this flow asks "what pays for this fee," not
+    /// "where does it get saved to," and SinkingFundProjectionService treats a fund with only
+    /// FundingAccountId set the same as one with only BankAccountId set: a single-account reservation
+    /// reminder, just correctly labeled as the source rather than a destination that doesn't exist yet.
+    /// If the user later sets a real Savings Account on the Sinking Funds page, it upgrades on its own to
+    /// an actual transfer between the two — no further action needed here.
+    /// </summary>
+    private async Task ConfirmCreateSinkingFundForFee(DebtFee fee)
+    {
+        if (string.IsNullOrWhiteSpace(_newSinkingFundName) || fee.Amount <= 0) return;
+
+        var fund = new SinkingFund
+        {
+            UserId = _userId,
+            Name = _newSinkingFundName.Trim(),
+            TargetAmount = fee.Amount,
+            Frequency = fee.Frequency switch
+            {
+                DebtFeeFrequency.Quarterly => SinkingFundFrequency.Quarterly,
+                DebtFeeFrequency.Yearly    => SinkingFundFrequency.Annual,
+                _                          => SinkingFundFrequency.Monthly
+            },
+            NextDueDate = NextFeeOccurrence(fee),
+            FundingAccountId = int.TryParse(_newFundingAccountIdStr, out var acctId) ? acctId : null,
+            IsActive = true
+        };
+        var newId = await SinkingFundRepo.CreateAsync(fund);
+        fund.Id = newId;
+        fee.SinkingFundId = newId;
+
+        // Without an account there's nothing to project a "set aside" reminder into — the fund still
+        // tracks/calculates fine, it just won't show up in cash flow.
+        if (fund.FundingAccountId.HasValue)
+            await SinkingFundProjectionSvc.PushAsync(fund, _userId, _horizonMonths);
+
+        _sinkingFunds = (await SinkingFundRepo.GetAllAsync(_userId)).ToList();
+        _creatingSinkingFundFor = null;
+        _confirmingFeeRemoval = null;
+        _newSinkingFundName = string.Empty;
+        _newFundingAccountIdStr = string.Empty;
+    }
+
+    /// <summary>Next real calendar date this fee is due, given its frequency/day/month — the date a newly
+    /// created Sinking Fund should target so its auto-calculated contribution lands on the right cadence.</summary>
+    private static DateOnly NextFeeOccurrence(DebtFee fee)
+    {
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var day = Math.Clamp(fee.DueDay ?? 1, 1, 28); // 28 keeps this valid across every month, incl. February
+
+        if (fee.Frequency == DebtFeeFrequency.Monthly)
+        {
+            var candidate = new DateOnly(today.Year, today.Month, day);
+            return candidate > today ? candidate : candidate.AddMonths(1);
+        }
+
+        var month = Math.Clamp(fee.DueMonth ?? 1, 1, 12);
+        var step = fee.Frequency == DebtFeeFrequency.Quarterly ? 3 : 12;
+        var next = new DateOnly(today.Year, month, day);
+        while (next <= today)
+            next = next.AddMonths(step);
+        return next;
     }
 
     private async Task ConfirmPayment(Debt debt)
@@ -1693,7 +1953,8 @@ else
 
     private async Task SubmitPendingPayment(CashFlowTransaction tx)
     {
-        await CashFlowRepo.MarkAsSubmittedAsync(tx.Id, _userId, DateOnly.FromDateTime(DateTime.Today));
+        // Keep the payment on its scheduled date — "submitted" is a status, not a reschedule.
+        await CashFlowRepo.MarkAsSubmittedAsync(tx.Id, _userId, tx.TransactionDate);
         await LoadAsync();
     }
 

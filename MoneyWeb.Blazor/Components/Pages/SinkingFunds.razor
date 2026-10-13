@@ -3,12 +3,14 @@
 @using MoneyWeb.Blazor.Services
 @using MoneyWeb.Data.Models
 @using MoneyWeb.Data.Repositories.Interfaces
+@using MoneyWeb.Data.Services
 @attribute [Authorize]
 @inject CurrentUserService CurrentUserService
 @inject ISinkingFundRepository SinkingFundRepo
 @inject IBankAccountRepository AccountRepo
 @inject ICashFlowRepository CashFlowRepo
 @inject IUserRepository UserRepo
+@inject ISinkingFundProjectionService SinkingFundProjectionSvc
 
 <PageTitle>Sinking Funds – MoneyWeb</PageTitle>
 
@@ -458,7 +460,7 @@ else
         else
             await SinkingFundRepo.UpdateAsync(_editing);
 
-        if (_editing.BankAccountId.HasValue)
+        if (_editing.BankAccountId.HasValue || _editing.FundingAccountId.HasValue)
             await PushToFlow(_editing);
 
         _showModal = false;
@@ -492,7 +494,7 @@ else
     {
         if (_markPaidTarget is null) return;
         await SinkingFundRepo.MarkPaidAndResetAsync(_markPaidTarget.Id, _userId);
-        if (_markPaidTarget.BankAccountId.HasValue)
+        if (_markPaidTarget.BankAccountId.HasValue || _markPaidTarget.FundingAccountId.HasValue)
         {
             await CashFlowRepo.DeleteProjectedForSourceAsync(_markPaidTarget.Id, _userId, TransactionCategory.SinkingFundPayment);
             await CashFlowRepo.DeleteProjectedForSourceAsync(_markPaidTarget.Id, _userId, TransactionCategory.SinkingFundContribution);
@@ -511,7 +513,7 @@ else
     private async Task ConfirmDelete()
     {
         if (_deleteTarget is null) return;
-        if (_deleteTarget.BankAccountId.HasValue)
+        if (_deleteTarget.BankAccountId.HasValue || _deleteTarget.FundingAccountId.HasValue)
         {
             await CashFlowRepo.DeleteProjectedForSourceAsync(_deleteTarget.Id, _userId, TransactionCategory.SinkingFundPayment);
             await CashFlowRepo.DeleteProjectedForSourceAsync(_deleteTarget.Id, _userId, TransactionCategory.SinkingFundContribution);
@@ -523,87 +525,7 @@ else
 
     private async Task PushToFlow(SinkingFund fund)
     {
-        if (!fund.BankAccountId.HasValue) return;
-
-        // Clear existing projections for this fund (both payment and contribution types)
-        await CashFlowRepo.DeleteProjectedForSourceAsync(fund.Id, _userId, TransactionCategory.SinkingFundPayment);
-        await CashFlowRepo.DeleteProjectedForSourceAsync(fund.Id, _userId, TransactionCategory.SinkingFundContribution);
-
-        var transactions = new List<CashFlowTransaction>();
-        var cutoff = DateOnly.FromDateTime(DateTime.Today.AddMonths(_horizonMonths));
-        var today = DateOnly.FromDateTime(DateTime.Today);
-
-        // Monthly contribution transfers within horizon
-        var contribDate = today.AddMonths(1);  // start next month
-        contribDate = new DateOnly(contribDate.Year, contribDate.Month, 1); // first of month
-        while (contribDate <= cutoff && contribDate < fund.NextDueDate)
-        {
-            if (fund.FundingAccountId.HasValue)
-            {
-                // Outflow from funding (source) account
-                transactions.Add(new CashFlowTransaction
-                {
-                    UserId = _userId,
-                    BankAccountId = fund.FundingAccountId.Value,
-                    TransactionDate = contribDate,
-                    Description = $"Sinking Fund: {fund.Name} – transfer to savings",
-                    Amount = -fund.EffectiveMonthlyContribution,
-                    Category = TransactionCategory.SinkingFundContribution,
-                    ReferenceId = fund.Id,
-                    IsProjected = true
-                });
-                // Inflow to savings (destination) account
-                transactions.Add(new CashFlowTransaction
-                {
-                    UserId = _userId,
-                    BankAccountId = fund.BankAccountId.Value,
-                    TransactionDate = contribDate,
-                    Description = $"Sinking Fund: {fund.Name} – contribution received",
-                    Amount = fund.EffectiveMonthlyContribution,
-                    Category = TransactionCategory.SinkingFundContribution,
-                    ReferenceId = fund.Id,
-                    IsProjected = true
-                });
-            }
-            else
-            {
-                // Single-account bucket: show as a reservation reminder (negative = reserved/locked)
-                transactions.Add(new CashFlowTransaction
-                {
-                    UserId = _userId,
-                    BankAccountId = fund.BankAccountId.Value,
-                    TransactionDate = contribDate,
-                    Description = $"Sinking Fund: {fund.Name} – reserve",
-                    Amount = -fund.EffectiveMonthlyContribution,
-                    Category = TransactionCategory.SinkingFundContribution,
-                    ReferenceId = fund.Id,
-                    IsProjected = true
-                });
-            }
-            contribDate = contribDate.AddMonths(1);
-        }
-
-        // Lump-sum payment dates within horizon
-        var payDate = fund.NextDueDate;
-        while (payDate <= cutoff)
-        {
-            transactions.Add(new CashFlowTransaction
-            {
-                UserId = _userId,
-                BankAccountId = fund.BankAccountId.Value,
-                TransactionDate = payDate,
-                Description = $"Sinking Fund Payment: {fund.Name}",
-                Amount = -fund.TargetAmount,
-                Category = TransactionCategory.SinkingFundPayment,
-                ReferenceId = fund.Id,
-                IsProjected = true
-            });
-            payDate = payDate.AddMonths(fund.PeriodMonths);
-        }
-
-        if (transactions.Count > 0)
-            await CashFlowRepo.BulkInsertProjectedAsync(transactions);
-
+        await SinkingFundProjectionSvc.PushAsync(fund, _userId, _horizonMonths);
         await LoadAsync();
     }
 

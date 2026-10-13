@@ -57,7 +57,17 @@ public class PasswordlessAuthService(
         token.Id = await tokenRepo.CreateAsync(token);
 
         var magicLink = $"{baseUrl}/auth/magic?token={rawToken}";
-        await emailSender.SendLoginEmailAsync(email, magicLink, code);
+        try
+        {
+            await emailSender.SendLoginEmailAsync(email, magicLink, code);
+        }
+        catch
+        {
+            // The token row still exists and is still valid — if this was actually delivered despite the
+            // exception (or the user retries and it works), /auth/verify would still accept the code. We
+            // just failed to confirm the send, so report it rather than crashing the whole request.
+            return new LoginRequestResult(false, null, "send_failed");
+        }
 
         return new LoginRequestResult(true, token.Id, null);
     }

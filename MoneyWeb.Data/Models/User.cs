@@ -16,6 +16,7 @@ public class User
     public bool ShowSinkingFunds { get; set; } = true;
     public bool ShowLoans { get; set; } = true;
     public bool ShowFamily { get; set; } = false;
+    public bool NewsletterOptIn { get; set; }
     public string LastLoginClaimsJson { get; set; } = string.Empty;
     public DateTime? LastLoginAtUtc { get; set; }
     public DateTime CreatedAt { get; set; }

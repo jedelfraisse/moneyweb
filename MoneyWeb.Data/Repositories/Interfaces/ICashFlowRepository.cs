@@ -7,6 +7,10 @@ public interface ICashFlowRepository
     /// <summary>All transactions for an account within the date range, sorted by date.</summary>
     Task<IEnumerable<CashFlowTransaction>> GetForAccountAsync(int bankAccountId, int userId, DateOnly from, DateOnly to);
 
+    /// <summary>Transactions for an account dated strictly before a cutoff — used to surface stale pending
+    /// items that fall outside the cash-flow view's normal lookback window.</summary>
+    Task<IEnumerable<CashFlowTransaction>> GetForAccountBeforeAsync(int bankAccountId, int userId, DateOnly before);
+
     /// <summary>Delete all projected transactions for a specific source (Income, Bill, Loan) by ReferenceId and Category.</summary>
     Task DeleteProjectedForSourceAsync(int referenceId, int userId, TransactionCategory category);
 
@@ -25,8 +29,12 @@ public interface ICashFlowRepository
     /// <summary>Update the date of a single transaction, marking it as a manual override.</summary>
     Task UpdateManualOverrideDateAsync(int id, int userId, DateOnly newDate);
 
-    /// <summary>Mark a projected transaction as submitted to the vendor — awaiting clearance.</summary>
-    Task MarkAsSubmittedAsync(int id, int userId, DateOnly submittedDate);
+    /// <summary>Mark a projected transaction as submitted to the vendor — awaiting clearance — and set its
+    /// expected payment date. Also pins it as a manual override so a later projection re-push won't drop it.</summary>
+    Task MarkAsSubmittedAsync(int id, int userId, DateOnly expectedPayDate);
+
+    /// <summary>Undo a submitted transaction — back to a plain pending projection (IsSubmitted = 0).</summary>
+    Task MarkAsUnsubmittedAsync(int id, int userId);
 
     /// <summary>Mark a projected transaction as confirmed/processed (IsProjected = false).</summary>
     Task MarkAsProcessedAsync(int id, int userId);
@@ -58,8 +66,10 @@ public interface ICashFlowRepository
     /// <summary>Delete all manual-override projected transactions for a source on a specific date (e.g. when deleting a recorded bill occurrence).</summary>
     Task DeleteManualProjectedOnDateAsync(int referenceId, int userId, TransactionCategory category, DateOnly date);
 
-    /// <summary>Mark a bill occurrence's CF transaction as submitted, matched by source+date rather than by ID.</summary>
-    Task MarkSubmittedForSourceOnDateAsync(int referenceId, int userId, TransactionCategory category, DateOnly date, DateOnly submittedDate);
+    /// <summary>Mark a bill occurrence's CF transaction as submitted (awaiting clearance), matched by
+    /// source+date rather than by ID. Does not move the transaction's date — "submitted" is a status,
+    /// not a reschedule; the payment still lands on its planned date.</summary>
+    Task MarkSubmittedForSourceOnDateAsync(int referenceId, int userId, TransactionCategory category, DateOnly date);
 
     /// <summary>
     /// Delete every still-upcoming (IsProjected) transaction for a source, regardless of manual-override —
@@ -82,4 +92,8 @@ public interface ICashFlowRepository
     /// alone. Returns the number of rows removed.
     /// </summary>
     Task<int> DeleteOrphanedProjectedTransactionsAsync();
+
+    /// <summary>Dry-run count for DeleteOrphanedProjectedTransactionsAsync — same criteria, no deletion.
+    /// Lets the admin see what a cleanup run would affect before committing to it.</summary>
+    Task<int> CountOrphanedProjectedTransactionsAsync();
 }

@@ -167,7 +167,9 @@ public class DebtPayoffService
                         ? Math.Min(debt.PaymentDayOfMonth.Value, DateTime.DaysInMonth(currentDate.Year, currentDate.Month))
                         : 1;
                     var dueDate = new DateOnly(currentDate.Year, currentDate.Month, day);
-                    var fees = debt.Fees.Where(f => f.IsActive).Sum(f => f.Amount);
+                    // Full per-occurrence amount, only in the month(s) it's actually due — not the
+                    // amortized monthly average (that's Debt.TotalMonthlyFees, for budgeting displays).
+                    var fees = debt.Fees.Where(f => f.IsActive && f.IsDueIn(currentDate.Month)).Sum(f => f.Amount);
                     schedule.Add(new ScheduledPayment(debt.Id, debt.Name, dueDate, paid, fees, balances[debt.Id], interestThisMonth.GetValueOrDefault(debt.Id)));
                 }
             }
