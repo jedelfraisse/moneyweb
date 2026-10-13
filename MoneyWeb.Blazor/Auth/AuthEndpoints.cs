@@ -25,7 +25,7 @@ public static class AuthEndpoints
 
             var result = await auth.StartLoginAsync(email, GetBaseUrl(http.Request));
             if (!result.Success)
-                return Results.LocalRedirect($"/login{BuildQuery(("error", result.ErrorCode), ("returnUrl", returnUrl))}");
+                return Results.LocalRedirect($"/login{BuildQuery(("error", result.ErrorCode), ("email", email), ("returnUrl", returnUrl))}");
 
             var rid = sqids.Encode(result.TokenId!.Value);
             return Results.LocalRedirect($"/login/verify{BuildQuery(("rid", rid), ("returnUrl", returnUrl))}");

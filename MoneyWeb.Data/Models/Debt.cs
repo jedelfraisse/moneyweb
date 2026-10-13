@@ -80,8 +80,10 @@ public class Debt
         ? Math.Round(Balance / CreditLimit.Value, 4)
         : null;
 
-    /// <summary>Sum of all active fees (taxes, insurance, etc.) not counted toward balance reduction.</summary>
-    public decimal TotalMonthlyFees => Fees.Where(f => f.IsActive).Sum(f => f.Amount);
+    /// <summary>Amortized monthly average of all active fees (taxes, insurance, etc.), not counted toward
+    /// balance reduction — a Yearly $1,200 fee contributes $100/mo here even though it only actually
+    /// posts once a year (see DebtFee.IsDueIn for the real per-month cash-flow timing).</summary>
+    public decimal TotalMonthlyFees => Fees.Where(f => f.IsActive).Sum(f => f.MonthlyEquivalent);
 
     /// <summary>Total monthly outflow: minimum payment + all active fees.</summary>
     public decimal TotalMonthlyPayment => MinimumPayment + TotalMonthlyFees;

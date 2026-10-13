@@ -44,7 +44,24 @@ else
                 (projected) transactions whose debt or bill no longer exists. Already-cleared transaction
                 history is never touched.
             </p>
-            <button class="btn btn-outline-danger" disabled="@_running" @onclick="RunCleanup">
+
+            @if (_pendingCount is null)
+            {
+                <p class="text-muted small"><span class="spinner-border spinner-border-sm me-1"></span> Checking for orphaned transactions&hellip;</p>
+            }
+            else if (_pendingCount == 0)
+            {
+                <p class="text-success small mb-2">✓ Nothing to clean up right now.</p>
+            }
+            else
+            {
+                <p class="fw-semibold small mb-2">
+                    <span class="badge bg-warning text-dark">@_pendingCount</span>
+                    orphaned transaction@(_pendingCount == 1 ? "" : "s") found — this is exactly what "Run Cleanup" would remove.
+                </p>
+            }
+
+            <button class="btn btn-outline-danger" disabled="@(_running || _pendingCount is 0 or null)" @onclick="RunCleanup">
                 @if (_running)
                 {
                     <span class="spinner-border spinner-border-sm me-1"></span>
@@ -59,10 +76,13 @@ else
     private User? _currentUser;
     private bool _running;
     private string? _message;
+    private int? _pendingCount;
 
     protected override async Task OnInitializedAsync()
     {
         _currentUser = await CurrentUserSvc.GetCurrentUserAsync();
+        if (_currentUser?.IsAdmin == true)
+            _pendingCount = await CashFlowRepo.CountOrphanedProjectedTransactionsAsync();
     }
 
     private async Task RunCleanup()
@@ -75,6 +95,7 @@ else
             _message = removed == 0
                 ? "No orphaned transactions found."
                 : $"Removed {removed} orphaned transaction{(removed == 1 ? "" : "s")}.";
+            _pendingCount = await CashFlowRepo.CountOrphanedProjectedTransactionsAsync();
         }
         finally
         {

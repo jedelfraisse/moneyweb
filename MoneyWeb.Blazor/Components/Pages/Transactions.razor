@@ -61,6 +61,65 @@ else
         </div>
     </div>
 
+    @if (_stale.Count > 0)
+    {
+        <div class="alert alert-warning d-flex flex-column gap-2">
+            <div class="d-flex justify-content-between align-items-center">
+                <span>
+                    ⚠️ <strong>@_stale.Count</strong> pending transaction@(_stale.Count == 1 ? "" : "s")
+                    dated more than @WindowYearsBack years ago — outside the forecast below and not counted
+                    in the running balance. Re-date, clear, or skip them here.
+                </span>
+                <button class="btn btn-sm btn-outline-dark flex-shrink-0 ms-3" @onclick="() => _showStale = !_showStale">
+                    @(_showStale ? "Hide" : "Review")
+                </button>
+            </div>
+            @if (_showStale)
+            {
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0 bg-white">
+                        <thead>
+                            <tr><th>Date</th><th>Description</th><th class="text-end">Amount</th><th></th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var t in _stale)
+                            {
+                                <tr>
+                                    <td class="text-nowrap">
+                                        @if (_changingDateId == t.Id)
+                                        {
+                                            <input type="date" class="form-control form-control-sm d-inline-block" style="width:150px"
+                                                   value="@t.TransactionDate.ToString("yyyy-MM-dd")"
+                                                   @onchange="e => OverrideDate(t, e.Value?.ToString())" />
+                                            <button class="btn btn-sm btn-outline-secondary ms-1" @onclick="() => _changingDateId = null">Cancel</button>
+                                        }
+                                        else
+                                        {
+                                            @t.TransactionDate.ToString("MMM d, yyyy")
+                                        }
+                                    </td>
+                                    <td>@t.Description</td>
+                                    <td class="text-end fw-semibold @(t.Amount >= 0 ? "text-success" : "text-danger")">@t.Amount.ToString("C")</td>
+                                    <td class="text-end text-nowrap">
+                                        @if (_changingDateId != t.Id)
+                                        {
+                                            <button class="btn btn-sm btn-outline-secondary me-1" title="Change date"
+                                                    @onclick="() => _changingDateId = t.Id">📅</button>
+                                            <button class="btn btn-sm btn-outline-success me-1" title="Payment cleared/confirmed"
+                                                    @onclick="() => BeginConfirm(t, true)">✓</button>
+                                            <button class="btn btn-sm btn-outline-danger" title="Skip / remove this entry"
+                                                    @onclick="() => BeginConfirm(t, false)">Skip</button>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    }
+
     @if (!_months.Any())
     {
         <div class="alert alert-info">
@@ -163,7 +222,7 @@ else
                                     {
                                         @if (_submittingId == t.Id)
                                         {
-                                            <span class="me-1 text-muted small">Submitted on:</span>
+                                            <span class="me-1 text-muted small">Expected payment date:</span>
                                             <input type="date" class="form-control form-control-sm d-inline-block me-1" style="width:145px"
                                                    @bind="_submitDate" @bind:format="yyyy-MM-dd" />
                                             <button class="btn btn-sm btn-info me-1" @onclick="() => ConfirmSubmit(t)">Confirm</button>
@@ -178,15 +237,20 @@ else
                                         }
                                         else
                                         {
-                                            @if (!t.IsAutoDraft && !t.IsSubmitted)
+                                            @if (!t.IsAutoDraft)
                                             {
                                                 <button class="btn btn-sm btn-outline-secondary me-1" title="Change date"
                                                         @onclick="() => _changingDateId = t.Id">📅</button>
                                             }
                                             @if (!t.IsSubmitted && !t.IsAutoDraft && !(t.IsManualOverride && t.Category == TransactionCategory.DebtPayment))
                                             {
-                                                <button class="btn btn-sm btn-outline-warning me-1" title="I told the vendor — record the submitted date"
-                                                        @onclick="() => BeginSubmit(t.Id)">📤 Submit</button>
+                                                <button class="btn btn-sm btn-outline-warning me-1" title="I told the vendor — record the expected payment date"
+                                                        @onclick="() => BeginSubmit(t)">📤 Submit</button>
+                                            }
+                                            @if (t.IsSubmitted && !t.IsAutoDraft)
+                                            {
+                                                <button class="btn btn-sm btn-outline-secondary me-1" title="Undo submitted — back to pending"
+                                                        @onclick="() => Unsubmit(t)">↩</button>
                                             }
                                             <button class="btn btn-sm btn-outline-success me-1" title="Payment cleared/confirmed"
                                                     @onclick="() => BeginConfirm(t, true)">✓</button>
@@ -322,6 +386,10 @@ else
 @code {
     [Parameter] public string BankAccountId { get; set; } = "";
 
+    // How far back the forecast table looks. Anything pending older than this is pulled out into the
+    // "stale pending" panel instead of silently dropping off the view.
+    private const int WindowYearsBack = 5;
+
     private int _bankAccountId;
     private bool _loading = true;
     private int _userId;
@@ -329,6 +397,10 @@ else
     private List<MonthGroup> _months = [];
     private decimal _finalBalance;
     private int? _changingDateId;
+
+    // Pending items older than the lookback window — surfaced only when some exist.
+    private List<CashFlowTransaction> _stale = [];
+    private bool _showStale;
 
     // Balance editing
     private bool _editingBalance;
@@ -369,14 +441,21 @@ else
 
     private async Task LoadAsync()
     {
-        // Start from the beginning of the current month so past-pending items are visible
+        // Reach well back so still-pending items from past months (not yet skipped/confirmed/cleared)
+        // stay visible and keep dragging the running balance until they're actioned. Cleared and skipped
+        // rows are deleted outright, so nothing stale accumulates behind this window. Anything older still
+        // is collected into _stale and shown in a separate panel rather than vanishing from view.
         var today = DateOnly.FromDateTime(DateTime.Today);
-        var from = new DateOnly(today.Year, today.Month, 1);
+        var from = today.AddYears(-WindowYearsBack);
         var to = today.AddMonths(60);
         var raw = (await CashFlowRepo.GetForAccountAsync(_bankAccountId, _userId, from, to))
             .OrderBy(t => t.TransactionDate)
             .ThenBy(t => t.Amount >= 0 ? 0 : 1)
             .ThenBy(t => t.Id)
+            .ToList();
+
+        _stale = (await CashFlowRepo.GetForAccountBeforeAsync(_bankAccountId, _userId, from))
+            .OrderBy(t => t.TransactionDate).ThenBy(t => t.Id)
             .ToList();
 
         decimal running = _account!.CurrentBalance;
@@ -405,14 +484,23 @@ else
         await LoadAsync();
     }
 
-    private void BeginSubmit(int id)
+    private void BeginSubmit(CashFlowTransaction t)
     {
-        _submittingId = id;
-        _submitDate = DateOnly.FromDateTime(DateTime.Today);
+        _submittingId = t.Id;
+        _submitDate = t.TransactionDate;   // default to the date it's already expected to clear, not today
         _changingDateId = null;
     }
 
     private void CancelSubmit() => _submittingId = null;
+
+    private async Task Unsubmit(CashFlowTransaction t)
+    {
+        await CashFlowRepo.MarkAsUnsubmittedAsync(t.Id, _userId);
+        if (t.Category == TransactionCategory.Bill && t.ReferenceId.HasValue)
+            await BillRepo.UpdateOccurrenceStatusByBillAndPayDateAsync(
+                t.ReferenceId.Value, _userId, t.TransactionDate, BillOccurrenceStatus.Received, null);
+        await LoadAsync();
+    }
 
     private async Task ConfirmSubmit(CashFlowTransaction t)
     {

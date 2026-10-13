@@ -1,10 +1,35 @@
 @page "/login"
 @page "/login/verify"
 @using MoneyWeb.Data.Repositories.Interfaces
+@using MoneyWeb.Blazor.Services.Email
 @inject SqidsEncoder<int> Sqids
 @inject ILoginTokenRepository LoginTokenRepo
+@inject EmailDiagnostics EmailDiagnostics
+@inject IWebHostEnvironment Env
 
 <PageTitle>Sign In – MoneyWeb</PageTitle>
+
+@{
+    // ── TEMP DEBUG: proves whether the send actually reached the configured SMTP server.
+    // Remove once smtp4dev connectivity is confirmed reliable. Dev-only (gated at each call site).
+    RenderFragment<string?> debugPanel = forEmail => @<text>
+        @{ var attempt = EmailDiagnostics.GetLatest(forEmail); }
+        <div class="alert @(attempt is null ? "alert-secondary" : attempt.Success ? "alert-success" : "alert-danger") small mt-3 mb-0">
+            <strong>Debug — email send attempt:</strong>
+            @if (attempt is null)
+            {
+                <span>No send recorded yet for this address.</span>
+            }
+            else
+            {
+                <div>To: @attempt.ToEmail</div>
+                <div>Server: @attempt.Host@(attempt.Port > 0 ? $":{attempt.Port}" : "")</div>
+                <div>Result: @(attempt.Success ? $"✅ connected & sent ({attempt.ElapsedMs}ms)" : $"❌ FAILED after {attempt.ElapsedMs}ms — {attempt.Error}")</div>
+                <div>At: @attempt.AtUtc.ToLocalTime().ToString("HH:mm:ss")</div>
+            }
+        </div>
+    </text>;
+}
 
 <div class="row justify-content-center">
     <div class="col-md-5">
@@ -20,10 +45,15 @@
                 <input type="hidden" name="returnUrl" value="@ReturnUrl" />
                 <div class="mb-3">
                     <label class="form-label">Email</label>
-                    <input type="email" name="email" class="form-control" required autofocus />
+                    <input type="email" name="email" class="form-control" value="@QueryEmail" required autofocus />
                 </div>
                 <button type="submit" class="btn btn-primary">Send code</button>
             </form>
+
+            @if (Env.IsDevelopment() && Error == "send_failed")
+            {
+                @debugPanel(QueryEmail)
+            }
         }
         else
         {
@@ -50,6 +80,11 @@
                 <input type="hidden" name="returnUrl" value="@ReturnUrl" />
                 <button type="submit" class="btn btn-link btn-sm px-0">Resend code</button>
             </form>
+
+            @if (Env.IsDevelopment())
+            {
+                @debugPanel(Email)
+            }
         }
     </div>
 </div>
@@ -58,6 +93,7 @@
     [SupplyParameterFromQuery] public string? Rid { get; set; }
     [SupplyParameterFromQuery] public string? Error { get; set; }
     [SupplyParameterFromQuery] public string? ReturnUrl { get; set; }
+    [SupplyParameterFromQuery(Name = "email")] public string? QueryEmail { get; set; }
 
     private string? Email;
     private string MaskedEmail = "your email";
@@ -88,6 +124,7 @@
         "invalid_code" => "That code didn't match. Try again.",
         "expired" => "That code or link has expired. Request a new one below.",
         "too_many_attempts" => "Too many incorrect attempts. Request a new code.",
+        "send_failed" => "We couldn't confirm the sign-in email was sent. Please try again in a moment.",
         _ => "Something went wrong. Please try again."
     };
 }
