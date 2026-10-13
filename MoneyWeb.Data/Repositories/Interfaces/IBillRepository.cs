@@ -21,6 +21,15 @@ public interface IBillRepository
     /// <summary>Delete an open bill occurrence that matches the bill and its effective pay date (PlannedPayDate if set, otherwise DueDate).</summary>
     Task DeleteOccurrenceByBillAndPayDateAsync(int billId, int userId, DateOnly payDate);
 
-    /// <summary>Update the status (and optionally submitted date) of a bill occurrence matched by bill + effective pay date.</summary>
-    Task UpdateOccurrenceStatusByBillAndPayDateAsync(int billId, int userId, DateOnly payDate, BillOccurrenceStatus status, DateOnly? submittedDate);
+    /// <summary>Update the status (and optionally submitted date) of a bill occurrence matched by bill + effective pay date.
+    /// Pass <paramref name="newPlannedPayDate"/> when the cash-flow transaction is being moved, so the two stay matched.</summary>
+    Task UpdateOccurrenceStatusByBillAndPayDateAsync(int billId, int userId, DateOnly payDate, BillOccurrenceStatus status, DateOnly? submittedDate, DateOnly? newPlannedPayDate = null);
+
+    /// <summary>A bill's cash-flow payment cleared — mark its matching open occurrence Confirmed, or record a new
+    /// Confirmed occurrence if there wasn't one (e.g. an auto-draft), so the bill's next due date advances.</summary>
+    Task ConfirmPaymentByBillAndPayDateAsync(int billId, int userId, DateOnly payDate, decimal amount);
+
+    /// <summary>Ids of open occurrences for bills linked to a bank account that have no matching cash-flow
+    /// transaction — usually left behind when the payment was cleared or skipped on the Transactions page.</summary>
+    Task<IEnumerable<int>> GetOpenOccurrenceIdsMissingCashFlowAsync(int userId);
 }

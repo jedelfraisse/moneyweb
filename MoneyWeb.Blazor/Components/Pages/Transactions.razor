@@ -507,7 +507,10 @@ else
         var originalDate = t.TransactionDate;
         await CashFlowRepo.MarkAsSubmittedAsync(t.Id, _userId, _submitDate);
         if (t.Category == TransactionCategory.Bill && t.ReferenceId.HasValue)
-            await BillRepo.UpdateOccurrenceStatusByBillAndPayDateAsync(t.ReferenceId.Value, _userId, originalDate, BillOccurrenceStatus.Submitted, _submitDate);
+            // Move the occurrence's planned pay date along with the transaction — they're matched by date,
+            // so letting them drift apart orphans the open bill when this is later cleared or skipped.
+            await BillRepo.UpdateOccurrenceStatusByBillAndPayDateAsync(t.ReferenceId.Value, _userId, originalDate,
+                BillOccurrenceStatus.Submitted, DateOnly.FromDateTime(DateTime.Today), _submitDate);
         _submittingId = null;
         await LoadAsync();
     }
@@ -559,9 +562,15 @@ else
             await LoadAsync();
             return;
         }
-        // When skipping a bill, also remove the open bill occurrence
-        if (!_confirmIsClearing && tx.Category == TransactionCategory.Bill && tx.ReferenceId.HasValue)
-            await BillRepo.DeleteOccurrenceByBillAndPayDateAsync(tx.ReferenceId.Value, _userId, tx.TransactionDate);
+        // Bills: clearing closes the open occurrence (or records one, e.g. for an auto-draft) so the Bills page
+        // doesn't keep it open and its next due date advances; skipping removes the open occurrence.
+        if (tx.Category == TransactionCategory.Bill && tx.ReferenceId.HasValue)
+        {
+            if (_confirmIsClearing)
+                await BillRepo.ConfirmPaymentByBillAndPayDateAsync(tx.ReferenceId.Value, _userId, tx.TransactionDate, Math.Abs(tx.Amount));
+            else
+                await BillRepo.DeleteOccurrenceByBillAndPayDateAsync(tx.ReferenceId.Value, _userId, tx.TransactionDate);
+        }
         await CashFlowRepo.DeleteAsync(tx.Id, _userId);
         CancelConfirm();
         await LoadAsync();
