@@ -50,6 +50,17 @@ public class Bill
             : occurrenceDueDate.AddDays(1);
     }
 
+    /// <summary>
+    /// The next due date to show for this bill: the period after its last recorded occurrence. For auto-draft
+    /// bills a date already in the past is rolled forward to the next one from today — the bank pulled those
+    /// automatically, so an unrecorded past draft isn't something still owed.
+    /// </summary>
+    public DateOnly UpcomingDueDate(DateOnly today)
+    {
+        var next = NextDueDate(NextFromAfterLastOccurrence(LastOccurrenceDueDate, today));
+        return PaymentMethod == DebtPaymentMethod.AutoDraft && next < today ? NextDueDate(today) : next;
+    }
+
     /// <summary>Convenience overload that handles the null (no occurrences recorded) case.</summary>
     public DateOnly NextFromAfterLastOccurrence(DateOnly? lastOccurrenceDueDate, DateOnly today)
         => lastOccurrenceDueDate.HasValue

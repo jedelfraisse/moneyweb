@@ -36,7 +36,7 @@ else
     var today0 = DateOnly.FromDateTime(DateTime.Today);
     Func<Bill, object> billSortKey = _billSort == "name"
         ? (b => (object)b.Name)
-        : (b => (object)b.NextDueDate(b.NextFromAfterLastOccurrence(b.LastOccurrenceDueDate, today0)));
+        : (b => (object)b.UpcomingDueDate(today0));
     var manualBills    = _bills.Where(b => b.PaymentMethod != DebtPaymentMethod.AutoDraft).OrderBy(billSortKey).ToList();
     var autoDraftBills = _bills.Where(b => b.PaymentMethod == DebtPaymentMethod.AutoDraft).OrderBy(billSortKey).ToList();
     var openManual     = _openOccurrences.Where(o => o.IsOneOff || _bills.Any(b => b.Id == o.BillId && b.PaymentMethod != DebtPaymentMethod.AutoDraft)).ToList();
@@ -78,6 +78,11 @@ else
                             <td class="fw-semibold">
                                 @occ.DisplayName
                                 @if (occ.IsOneOff) { <span class="badge bg-secondary ms-1 small">One-Off</span> }
+                                @if (_openMissingCashFlow.Contains(occ.Id))
+                                {
+                                    <span class="badge bg-light text-danger border border-danger ms-1 small"
+                                          title="No matching entry in the bank account's cash flow — it was probably already cleared or skipped there. ✓ Confirm if it was paid, or ✕ to remove it.">⚠ Not in cash flow</span>
+                                }
                             </td>
                             <td class="text-center @(overdue ? "fw-semibold" : "")">@occ.DueDate.ToString("MMM d, yyyy")</td>
                             <td class="text-center text-muted small">@(occ.PlannedPayDate.HasValue ? occ.PlannedPayDate.Value.ToString("MMM d, yyyy") : "—")</td>
@@ -121,7 +126,7 @@ else
                     @foreach (var bill in manualBills)
                     {
                         var today   = DateOnly.FromDateTime(DateTime.Today);
-                        var nextDue = bill.NextDueDate(bill.NextFromAfterLastOccurrence(bill.LastOccurrenceDueDate, today));
+                        var nextDue = bill.UpcomingDueDate(today);
                         var dueSoon = nextDue <= today.AddDays(14);
                         <tr class="@(!bill.IsActive ? "text-muted" : "")">
                             <td class="text-center" style="width:28px">
@@ -228,7 +233,7 @@ else
                     @foreach (var bill in autoDraftBills)
                     {
                         var today   = DateOnly.FromDateTime(DateTime.Today);
-                        var nextDue = bill.NextDueDate(bill.NextFromAfterLastOccurrence(bill.LastOccurrenceDueDate, today));
+                        var nextDue = bill.UpcomingDueDate(today);
                         var dueSoon = nextDue <= today.AddDays(14);
                         <tr class="@(!bill.IsActive ? "text-muted" : "")">
                             <td class="text-center" style="width:28px">
@@ -549,6 +554,8 @@ else
     private List<Bill> _bills = [];
     private List<BankAccount> _bankAccounts = [];
     private List<BillOccurrence> _openOccurrences = [];
+    // Open occurrences whose cash-flow transaction is gone (cleared/skipped on the Transactions page) — flagged so they can be closed out.
+    private HashSet<int> _openMissingCashFlow = [];
     private HashSet<int> _expanded = [];
     private Dictionary<int, List<BillOccurrence>> _occurrences = [];
     private string? _errorMessage;
@@ -584,7 +591,13 @@ else
         if (user is null) return;
         _bills = (await BillRepo.GetAllAsync(user.Id, activeOnly: false)).ToList();
         _bankAccounts = (await AccountRepo.GetAllAsync(user.Id)).ToList();
-        _openOccurrences = (await BillRepo.GetOpenOccurrencesAsync(user.Id)).ToList();
+        await LoadOpenOccurrencesAsync(user.Id);
+    }
+
+    private async Task LoadOpenOccurrencesAsync(int userId)
+    {
+        _openOccurrences = (await BillRepo.GetOpenOccurrencesAsync(userId)).ToList();
+        _openMissingCashFlow = [.. await BillRepo.GetOpenOccurrenceIdsMissingCashFlowAsync(userId)];
     }
 
     private async Task ToggleExpand(int billId)
@@ -631,7 +644,7 @@ else
         _bankIdStr = bill.BankAccountId?.ToString() ?? string.Empty;
         _annualMonthStr = bill.AnnualMonth?.ToString() ?? string.Empty;
         var today = DateOnly.FromDateTime(DateTime.Today);
-        var nextDue = bill.NextDueDate(bill.NextFromAfterLastOccurrence(bill.LastOccurrenceDueDate, today));
+        var nextDue = bill.UpcomingDueDate(today);
         _nextDueDate = nextDue;
         _modalError = null;
         _showModal = true;
@@ -702,7 +715,7 @@ else
     private void OpenEnterActual(Bill bill)
     {
         var today = DateOnly.FromDateTime(DateTime.Today);
-        var nextDue = bill.NextDueDate(bill.NextFromAfterLastOccurrence(bill.LastOccurrenceDueDate, today));
+        var nextDue = bill.UpcomingDueDate(today);
         _editingOcc = new BillOccurrence
         {
             BillId = bill.Id,
@@ -884,7 +897,7 @@ else
             _occurrences.Remove(occ.BillId.Value);
             await LoadOccurrences(occ.BillId.Value);
         }
-        _openOccurrences = (await BillRepo.GetOpenOccurrencesAsync(user.Id)).ToList();
+        await LoadOpenOccurrencesAsync(user.Id);
     }
 
     private async Task ConfirmDeleteOccurrence()
@@ -911,7 +924,7 @@ else
             _occurrences.Remove(occ.BillId.Value);
             await LoadOccurrences(occ.BillId.Value);
         }
-        _openOccurrences = (await BillRepo.GetOpenOccurrencesAsync(user.Id)).ToList();
+        await LoadOpenOccurrencesAsync(user.Id);
     }
 
     // ── Push to Cash Flow ───────────────────────────────────────────

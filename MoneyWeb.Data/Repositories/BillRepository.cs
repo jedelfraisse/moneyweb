@@ -156,15 +156,52 @@ public class BillRepository(string connectionString) : IBillRepository
             new { BillId = billId, UserId = userId, PayDate = payDate });
     }
 
-    public async Task UpdateOccurrenceStatusByBillAndPayDateAsync(int billId, int userId, DateOnly payDate, BillOccurrenceStatus status, DateOnly? submittedDate)
+    public async Task UpdateOccurrenceStatusByBillAndPayDateAsync(int billId, int userId, DateOnly payDate, BillOccurrenceStatus status, DateOnly? submittedDate, DateOnly? newPlannedPayDate = null)
     {
         using var conn = Connect();
         await conn.ExecuteAsync(
             """
-            UPDATE BillOccurrences SET Status = @Status, SubmittedDate = @SubmittedDate, UpdatedAt = GETUTCDATE()
+            UPDATE BillOccurrences SET
+                Status = @Status, SubmittedDate = @SubmittedDate,
+                PlannedPayDate = COALESCE(@NewPlannedPayDate, PlannedPayDate), UpdatedAt = GETUTCDATE()
             WHERE BillId = @BillId AND UserId = @UserId
               AND (PlannedPayDate = @PayDate OR (PlannedPayDate IS NULL AND DueDate = @PayDate))
             """,
-            new { BillId = billId, UserId = userId, PayDate = payDate, Status = status, SubmittedDate = submittedDate });
+            new { BillId = billId, UserId = userId, PayDate = payDate, Status = status, SubmittedDate = submittedDate, NewPlannedPayDate = newPlannedPayDate });
+    }
+
+    public async Task ConfirmPaymentByBillAndPayDateAsync(int billId, int userId, DateOnly payDate, decimal amount)
+    {
+        using var conn = Connect();
+        await conn.ExecuteAsync(
+            $"""
+            UPDATE BillOccurrences SET
+                Status = {(int)BillOccurrenceStatus.Confirmed}, ActualAmount = COALESCE(ActualAmount, @Amount), UpdatedAt = GETUTCDATE()
+            WHERE BillId = @BillId AND UserId = @UserId AND Status <> {(int)BillOccurrenceStatus.Confirmed}
+              AND (PlannedPayDate = @PayDate OR (PlannedPayDate IS NULL AND DueDate = @PayDate));
+
+            IF @@ROWCOUNT = 0
+                INSERT INTO BillOccurrences
+                    (BillId, UserId, DueDate, EstimatedAmount, ActualAmount, Status, CreatedAt, UpdatedAt)
+                VALUES (@BillId, @UserId, @PayDate, @Amount, @Amount, {(int)BillOccurrenceStatus.Confirmed}, GETUTCDATE(), GETUTCDATE());
+            """,
+            new { BillId = billId, UserId = userId, PayDate = payDate, Amount = amount });
+    }
+
+    public async Task<IEnumerable<int>> GetOpenOccurrenceIdsMissingCashFlowAsync(int userId)
+    {
+        using var conn = Connect();
+        return await conn.QueryAsync<int>(
+            $"""
+            SELECT o.Id
+            FROM BillOccurrences o
+            JOIN Bills b ON b.Id = o.BillId AND b.BankAccountId IS NOT NULL
+            WHERE o.UserId = @UserId AND o.Status <> {(int)BillOccurrenceStatus.Confirmed}
+              AND NOT EXISTS (
+                SELECT 1 FROM CashFlowTransactions c
+                WHERE c.UserId = o.UserId AND c.ReferenceId = o.BillId
+                  AND c.Category = {(int)TransactionCategory.Bill}
+                  AND c.TransactionDate = ISNULL(o.PlannedPayDate, o.DueDate))
+            """, new { UserId = userId });
     }
 }
