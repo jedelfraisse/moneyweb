@@ -867,6 +867,8 @@ else
         var user = await CurrentUserService.GetCurrentUserAsync();
         if (user is null) return;
         occ.Status = newStatus;
+        // Audit stamp only — records when the user notified the vendor. It does NOT move the cash-flow
+        // entry: the payment still lands on its planned pay date / due date.
         if (newStatus == BillOccurrenceStatus.Submitted)
             occ.SubmittedDate = DateOnly.FromDateTime(DateTime.Today);
         await BillRepo.UpdateOccurrenceAsync(occ);
@@ -875,7 +877,7 @@ else
         {
             var payDate = occ.PlannedPayDate ?? occ.DueDate;
             if (newStatus == BillOccurrenceStatus.Submitted)
-                await CashFlowRepo.MarkSubmittedForSourceOnDateAsync(occ.BillId.Value, user.Id, TransactionCategory.Bill, payDate, occ.SubmittedDate!.Value);
+                await CashFlowRepo.MarkSubmittedForSourceOnDateAsync(occ.BillId.Value, user.Id, TransactionCategory.Bill, payDate);
         }
         if (occ.BillId.HasValue)
         {

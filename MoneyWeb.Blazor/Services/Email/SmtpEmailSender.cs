@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using MailKit.Net.Smtp;
 using MailKit.Security;
 using MimeKit;
@@ -16,7 +17,7 @@ namespace MoneyWeb.Blazor.Services.Email;
 /// is already expecting a TLS handshake on, and throws. MailKit picks the right mode from the
 /// port automatically via SecureSocketOptions.Auto.
 /// </summary>
-public class SmtpEmailSender(IConfiguration config, ILogger<SmtpEmailSender> logger) : IEmailSender
+public class SmtpEmailSender(IConfiguration config, ILogger<SmtpEmailSender> logger, EmailDiagnostics diagnostics) : IEmailSender
 {
     public async Task SendLoginEmailAsync(string toEmail, string magicLinkUrl, string code, CancellationToken ct = default)
     {
@@ -33,18 +34,40 @@ public class SmtpEmailSender(IConfiguration config, ILogger<SmtpEmailSender> log
         message.Subject = "Your MoneyWeb sign-in code";
         message.Body = new TextPart("html") { Text = BuildBody(magicLinkUrl, code) };
 
-        using var client = new SmtpClient();
-        // SslOnConnect for the classic implicit-TLS port (465); otherwise let MailKit negotiate
-        // STARTTLS when offered (587, or a dev catcher that doesn't support TLS at all).
-        var socketOptions = enableSsl && port == 465 ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.Auto;
-        await client.ConnectAsync(host, port, socketOptions, ct);
-        if (!string.IsNullOrWhiteSpace(username))
-            await client.AuthenticateAsync(username, password ?? string.Empty, ct);
-        await client.SendAsync(message, ct);
-        await client.DisconnectAsync(true, ct);
+        var sw = Stopwatch.StartNew();
+        var step = "connect";
+        try
+        {
+            using var client = new SmtpClient();
+            // SslOnConnect for the classic implicit-TLS port (465); otherwise let MailKit negotiate
+            // STARTTLS when offered (587, or a dev catcher that doesn't support TLS at all).
+            var socketOptions = enableSsl && port == 465 ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.Auto;
+            await client.ConnectAsync(host, port, socketOptions, ct);
 
-        logger.LogInformation("Sent login email to {Email} via SMTP {Host}:{Port} (auth: {Auth}, ssl: {Ssl})",
-            toEmail, host, port, !string.IsNullOrWhiteSpace(username), enableSsl);
+            step = "authenticate";
+            if (!string.IsNullOrWhiteSpace(username))
+                await client.AuthenticateAsync(username, password ?? string.Empty, ct);
+
+            step = "send";
+            await client.SendAsync(message, ct);
+
+            step = "disconnect";
+            await client.DisconnectAsync(true, ct);
+            sw.Stop();
+
+            logger.LogInformation("Sent login email to {Email} via SMTP {Host}:{Port} (auth: {Auth}, ssl: {Ssl}) in {ElapsedMs}ms",
+                toEmail, host, port, !string.IsNullOrWhiteSpace(username), enableSsl, sw.ElapsedMilliseconds);
+            diagnostics.Record(new EmailSendAttempt(toEmail, host, port, true, null, sw.ElapsedMilliseconds, DateTime.UtcNow));
+        }
+        catch (Exception ex)
+        {
+            sw.Stop();
+            var errorText = $"[{step}] {ex.GetType().Name}: {ex.Message}";
+            logger.LogError(ex, "Failed to send login email to {Email} via SMTP {Host}:{Port} at step '{Step}' after {ElapsedMs}ms",
+                toEmail, host, port, step, sw.ElapsedMilliseconds);
+            diagnostics.Record(new EmailSendAttempt(toEmail, host, port, false, errorText, sw.ElapsedMilliseconds, DateTime.UtcNow));
+            throw;
+        }
     }
 
     private static string BuildBody(string magicLinkUrl, string code) => $"""

@@ -6,7 +6,7 @@ namespace MoneyWeb.Blazor.Services.Email;
 /// /dev/sent-mail viewer, so the login flow is fully testable locally without any provider.
 /// Swap this registration out for a real provider (SMTP/SendGrid/etc.) before serving real users.
 /// </summary>
-public class DevEmailSender(ILogger<DevEmailSender> logger, DevMailbox mailbox) : IEmailSender
+public class DevEmailSender(ILogger<DevEmailSender> logger, DevMailbox mailbox, EmailDiagnostics diagnostics) : IEmailSender
 {
     public Task SendLoginEmailAsync(string toEmail, string magicLinkUrl, string code, CancellationToken ct = default)
     {
@@ -14,6 +14,7 @@ public class DevEmailSender(ILogger<DevEmailSender> logger, DevMailbox mailbox) 
             "==== DEV EMAIL (no real provider configured) ====\nTo: {Email}\nCode: {Code}\nMagic link: {Link}\n===================================================",
             toEmail, code, magicLinkUrl);
         mailbox.Add(new DevSentEmail(toEmail, magicLinkUrl, code, DateTime.UtcNow));
+        diagnostics.Record(new EmailSendAttempt(toEmail, "(dev capture — no SMTP)", 0, true, null, 0, DateTime.UtcNow));
         return Task.CompletedTask;
     }
 }

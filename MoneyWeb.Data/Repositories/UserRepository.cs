@@ -49,8 +49,8 @@ public class UserRepository(string connectionString) : IUserRepository
             USING (SELECT @Email AS Email) AS source
                 ON target.Email = source.Email
             WHEN NOT MATCHED THEN
-                INSERT (EntraObjectId, Email, DisplayName, PostalCode, IsApproved, IsDeclined, DeclineReason, RequestReason, IsAdmin, LastLoginClaimsJson, LastLoginAtUtc, CreatedAt)
-                VALUES (@EntraObjectId, @Email, @DisplayName, @PostalCode, @IsApproved, @IsDeclined, @DeclineReason, @RequestReason, @IsAdmin, @LastLoginClaimsJson, @LastLoginAtUtc, GETUTCDATE());
+                INSERT (EntraObjectId, Email, DisplayName, PostalCode, IsApproved, IsDeclined, DeclineReason, RequestReason, IsAdmin, NewsletterOptIn, LastLoginClaimsJson, LastLoginAtUtc, CreatedAt)
+                VALUES (@EntraObjectId, @Email, @DisplayName, @PostalCode, @IsApproved, @IsDeclined, @DeclineReason, @RequestReason, @IsAdmin, @NewsletterOptIn, @LastLoginClaimsJson, @LastLoginAtUtc, GETUTCDATE());
 
             SELECT Id FROM Users WHERE Email = @Email;
             """;
@@ -70,6 +70,7 @@ public class UserRepository(string connectionString) : IUserRepository
                 ShowSinkingFunds = @ShowSinkingFunds,
                 ShowLoans = @ShowLoans,
                 ShowFamily = @ShowFamily,
+                NewsletterOptIn = @NewsletterOptIn,
                 LastLoginClaimsJson = @LastLoginClaimsJson,
                 LastLoginAtUtc = @LastLoginAtUtc
             WHERE Id = @Id

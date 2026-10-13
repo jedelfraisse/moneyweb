@@ -114,8 +114,13 @@ public class DebtRepository(string connectionString) : IDebtRepository
     {
         if (debts.Count == 0) return;
         var debtIds = debts.Select(d => d.Id).ToList();
-        var fees = (await conn.QueryAsync<DebtFee>(
-            "SELECT * FROM DebtFees WHERE DebtId IN @Ids AND UserId = @UserId ORDER BY Id",
+        var fees = (await conn.QueryAsync<DebtFee>("""
+            SELECT f.*, sf.Name AS SinkingFundName
+            FROM DebtFees f
+            LEFT JOIN SinkingFunds sf ON sf.Id = f.SinkingFundId
+            WHERE f.DebtId IN @Ids AND f.UserId = @UserId
+            ORDER BY f.Id
+            """,
             new { Ids = debtIds, UserId = userId })).ToList();
         var feesByDebt = fees.GroupBy(f => f.DebtId).ToDictionary(g => g.Key, g => g.ToList());
         foreach (var debt in debts)
@@ -139,8 +144,13 @@ public class DebtRepository(string connectionString) : IDebtRepository
     public async Task<IEnumerable<DebtFee>> GetFeesAsync(int debtId, int userId)
     {
         using var conn = Connect();
-        return await conn.QueryAsync<DebtFee>(
-            "SELECT * FROM DebtFees WHERE DebtId = @DebtId AND UserId = @UserId ORDER BY Id",
+        return await conn.QueryAsync<DebtFee>("""
+            SELECT f.*, sf.Name AS SinkingFundName
+            FROM DebtFees f
+            LEFT JOIN SinkingFunds sf ON sf.Id = f.SinkingFundId
+            WHERE f.DebtId = @DebtId AND f.UserId = @UserId
+            ORDER BY f.Id
+            """,
             new { DebtId = debtId, UserId = userId });
     }
 
@@ -148,9 +158,9 @@ public class DebtRepository(string connectionString) : IDebtRepository
     {
         using var conn = Connect();
         return await conn.ExecuteScalarAsync<int>("""
-            INSERT INTO DebtFees (DebtId, UserId, Name, Amount, Category, IsActive, CreatedAt, UpdatedAt)
+            INSERT INTO DebtFees (DebtId, UserId, Name, Amount, Category, IsActive, Frequency, DueDay, DueMonth, SinkingFundId, CreatedAt, UpdatedAt)
             OUTPUT INSERTED.Id
-            VALUES (@DebtId, @UserId, @Name, @Amount, @Category, @IsActive, GETUTCDATE(), GETUTCDATE())
+            VALUES (@DebtId, @UserId, @Name, @Amount, @Category, @IsActive, @Frequency, @DueDay, @DueMonth, @SinkingFundId, GETUTCDATE(), GETUTCDATE())
             """, fee);
     }
 
@@ -159,7 +169,8 @@ public class DebtRepository(string connectionString) : IDebtRepository
         using var conn = Connect();
         await conn.ExecuteAsync("""
             UPDATE DebtFees SET Name = @Name, Amount = @Amount, Category = @Category,
-                IsActive = @IsActive, UpdatedAt = GETUTCDATE()
+                IsActive = @IsActive, Frequency = @Frequency, DueDay = @DueDay, DueMonth = @DueMonth,
+                SinkingFundId = @SinkingFundId, UpdatedAt = GETUTCDATE()
             WHERE Id = @Id AND UserId = @UserId
             """, fee);
     }

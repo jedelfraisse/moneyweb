@@ -40,6 +40,7 @@ builder.Services.AddHostedService<InterestAccrualBackgroundService>();
 // production); otherwise falls back to logging the code/link to the console + /dev/sent-mail.
 // See MoneyWeb.Blazor/Services/Email/.
 builder.Services.AddSingleton<DevMailbox>();
+builder.Services.AddSingleton<EmailDiagnostics>();
 if (!string.IsNullOrWhiteSpace(builder.Configuration["Smtp:Host"]))
 {
     builder.Services.AddSingleton<IEmailSender, SmtpEmailSender>();

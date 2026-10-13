@@ -23,6 +23,19 @@ public class CashFlowRepository(string connectionString) : ICashFlowRepository
             """, new { BankAccountId = bankAccountId, UserId = userId, From = from, To = to });
     }
 
+    public async Task<IEnumerable<CashFlowTransaction>> GetForAccountBeforeAsync(
+        int bankAccountId, int userId, DateOnly before)
+    {
+        using var conn = Connect();
+        return await conn.QueryAsync<CashFlowTransaction>("""
+            SELECT * FROM CashFlowTransactions
+            WHERE BankAccountId = @BankAccountId
+              AND UserId = @UserId
+              AND TransactionDate < @Before
+            ORDER BY TransactionDate, Id
+            """, new { BankAccountId = bankAccountId, UserId = userId, Before = before });
+    }
+
     public async Task DeleteProjectedForSourceAsync(int referenceId, int userId, TransactionCategory category)
     {
         using var conn = Connect();
@@ -99,14 +112,24 @@ public class CashFlowRepository(string connectionString) : ICashFlowRepository
             """, new { Id = id, UserId = userId, Date = newDate });
     }
 
-    public async Task MarkAsSubmittedAsync(int id, int userId, DateOnly submittedDate)
+    public async Task MarkAsSubmittedAsync(int id, int userId, DateOnly expectedPayDate)
     {
         using var conn = Connect();
         await conn.ExecuteAsync("""
             UPDATE CashFlowTransactions
-            SET IsSubmitted = 1, TransactionDate = @Date, UpdatedAt = GETUTCDATE()
+            SET IsSubmitted = 1, TransactionDate = @Date, IsManualOverride = 1, UpdatedAt = GETUTCDATE()
             WHERE Id = @Id AND UserId = @UserId
-            """, new { Id = id, UserId = userId, Date = submittedDate });
+            """, new { Id = id, UserId = userId, Date = expectedPayDate });
+    }
+
+    public async Task MarkAsUnsubmittedAsync(int id, int userId)
+    {
+        using var conn = Connect();
+        await conn.ExecuteAsync("""
+            UPDATE CashFlowTransactions
+            SET IsSubmitted = 0, UpdatedAt = GETUTCDATE()
+            WHERE Id = @Id AND UserId = @UserId
+            """, new { Id = id, UserId = userId });
     }
 
     public async Task MarkAsProcessedAsync(int id, int userId)
@@ -229,16 +252,16 @@ public class CashFlowRepository(string connectionString) : ICashFlowRepository
             """, new { ReferenceId = referenceId, UserId = userId, Category = (int)category, Date = date });
     }
 
-    public async Task MarkSubmittedForSourceOnDateAsync(int referenceId, int userId, TransactionCategory category, DateOnly date, DateOnly submittedDate)
+    public async Task MarkSubmittedForSourceOnDateAsync(int referenceId, int userId, TransactionCategory category, DateOnly date)
     {
         using var conn = Connect();
         await conn.ExecuteAsync("""
             UPDATE CashFlowTransactions
-            SET IsSubmitted = 1, TransactionDate = @SubmittedDate, UpdatedAt = GETUTCDATE()
+            SET IsSubmitted = 1, UpdatedAt = GETUTCDATE()
             WHERE ReferenceId = @ReferenceId AND UserId = @UserId
               AND Category = @Category AND IsManualOverride = 1 AND IsProjected = 1
               AND TransactionDate = @Date
-            """, new { ReferenceId = referenceId, UserId = userId, Category = (int)category, Date = date, SubmittedDate = submittedDate });
+            """, new { ReferenceId = referenceId, UserId = userId, Category = (int)category, Date = date });
     }
 
     public async Task DeleteAllProjectedForSourceAsync(int referenceId, int userId, TransactionCategory category)
@@ -267,13 +290,28 @@ public class CashFlowRepository(string connectionString) : ICashFlowRepository
         using var conn = Connect();
         return await conn.ExecuteAsync($"""
             DELETE cft FROM CashFlowTransactions cft
-            WHERE cft.IsProjected = 1
-              AND cft.ReferenceId IS NOT NULL
-              AND (
-                (cft.Category = {(int)TransactionCategory.DebtPayment} AND NOT EXISTS (SELECT 1 FROM Debts d WHERE d.Id = cft.ReferenceId))
-                OR
-                (cft.Category = {(int)TransactionCategory.Bill} AND NOT EXISTS (SELECT 1 FROM Bills b WHERE b.Id = cft.ReferenceId))
-              )
+            WHERE {OrphanedProjectedTransactionsWhere}
             """);
     }
+
+    public async Task<int> CountOrphanedProjectedTransactionsAsync()
+    {
+        using var conn = Connect();
+        return await conn.ExecuteScalarAsync<int>($"""
+            SELECT COUNT(*) FROM CashFlowTransactions cft
+            WHERE {OrphanedProjectedTransactionsWhere}
+            """);
+    }
+
+    /// <summary>Shared criteria for the orphaned-transaction sweep — kept in one place so the dry-run
+    /// count (CountOrphanedProjectedTransactionsAsync) can never drift from what actually gets deleted.</summary>
+    private static string OrphanedProjectedTransactionsWhere => $"""
+        cft.IsProjected = 1
+          AND cft.ReferenceId IS NOT NULL
+          AND (
+            (cft.Category = {(int)TransactionCategory.DebtPayment} AND NOT EXISTS (SELECT 1 FROM Debts d WHERE d.Id = cft.ReferenceId))
+            OR
+            (cft.Category = {(int)TransactionCategory.Bill} AND NOT EXISTS (SELECT 1 FROM Bills b WHERE b.Id = cft.ReferenceId))
+          )
+        """;
 }
