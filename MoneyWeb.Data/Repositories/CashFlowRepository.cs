@@ -23,6 +23,16 @@ public class CashFlowRepository(string connectionString) : ICashFlowRepository
             """, new { BankAccountId = bankAccountId, UserId = userId, From = from, To = to });
     }
 
+    public async Task<IEnumerable<CashFlowTransaction>> GetForSourceAsync(int referenceId, int userId, TransactionCategory category)
+    {
+        using var conn = Connect();
+        return await conn.QueryAsync<CashFlowTransaction>("""
+            SELECT * FROM CashFlowTransactions
+            WHERE ReferenceId = @ReferenceId AND UserId = @UserId AND Category = @Category
+            ORDER BY TransactionDate, Id
+            """, new { ReferenceId = referenceId, UserId = userId, Category = (int)category });
+    }
+
     public async Task<IEnumerable<CashFlowTransaction>> GetForAccountBeforeAsync(
         int bankAccountId, int userId, DateOnly before)
     {
