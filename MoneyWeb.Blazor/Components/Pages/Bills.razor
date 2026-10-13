@@ -41,6 +41,67 @@ else
     var autoDraftBills = _bills.Where(b => b.PaymentMethod == DebtPaymentMethod.AutoDraft).OrderBy(billSortKey).ToList();
     var openManual     = _openOccurrences.Where(o => o.IsOneOff || _bills.Any(b => b.Id == o.BillId && b.PaymentMethod != DebtPaymentMethod.AutoDraft)).ToList();
 
+    @* ── Open Bills ── *@
+    <div class="d-flex justify-content-between align-items-center mt-2 mb-2">
+        <h5 class="mb-0">
+            <span class="badge bg-warning text-dark me-1">Open Bills</span>
+            Pending &amp; in-flight
+            @if (openManual.Count > 0)
+            { <span class="badge bg-danger ms-1">@openManual.Count</span> }
+        </h5>
+        <button class="btn btn-sm btn-outline-secondary" @onclick="OpenOneOffEntry">+ One-Off Bill</button>
+    </div>
+    @if (openManual.Count == 0)
+    {
+        <p class="text-muted small fst-italic mb-4">No open bills. Record an actual from a recurring bill below or add a one-off.</p>
+    }
+    else
+    {
+        <div class="table-responsive mb-4">
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Name</th>
+                        <th class="text-center">Due Date</th>
+                        <th class="text-center">Plan to Pay</th>
+                        <th class="text-end">Amount</th>
+                        <th class="text-center">Status</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var occ in openManual.OrderBy(o => o.DueDate))
+                    {
+                        var today2 = DateOnly.FromDateTime(DateTime.Today);
+                        var overdue = occ.DueDate < today2 && occ.Status != BillOccurrenceStatus.Submitted;
+                        <tr class="@(overdue ? "table-danger" : "")">
+                            <td class="fw-semibold">
+                                @occ.DisplayName
+                                @if (occ.IsOneOff) { <span class="badge bg-secondary ms-1 small">One-Off</span> }
+                            </td>
+                            <td class="text-center @(overdue ? "fw-semibold" : "")">@occ.DueDate.ToString("MMM d, yyyy")</td>
+                            <td class="text-center text-muted small">@(occ.PlannedPayDate.HasValue ? occ.PlannedPayDate.Value.ToString("MMM d, yyyy") : "—")</td>
+                            <td class="text-end">@((occ.ActualAmount ?? occ.EstimatedAmount).ToString("C"))</td>
+                            <td class="text-center">@OccurrenceStatusBadge(occ.Status)</td>
+                            <td class="text-end text-nowrap">
+                                @if (occ.Status is BillOccurrenceStatus.Estimated or BillOccurrenceStatus.Received)
+                                {
+                                    <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => OpenEditOccurrence(occ)">Edit</button>
+                                    <button class="btn btn-sm btn-outline-warning me-1" @onclick="() => AdvanceOccurrenceStatus(occ, BillOccurrenceStatus.Submitted)">📤 Submit</button>
+                                }
+                                @if (occ.Status == BillOccurrenceStatus.Submitted)
+                                {
+                                    <button class="btn btn-sm btn-outline-success me-1" @onclick="() => AdvanceOccurrenceStatus(occ, BillOccurrenceStatus.Confirmed)">✓ Confirm</button>
+                                }
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => _deletingOccurrence = occ">✕</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
     @if (manualBills.Count > 0)
     {
         <h5 class="mt-2 mb-2">
@@ -142,67 +203,6 @@ else
                                 </td>
                             </tr>
                         }
-                    }
-                </tbody>
-            </table>
-        </div>
-    }
-
-    @* ── Open Bills ── *@
-    <div class="d-flex justify-content-between align-items-center mt-4 mb-2">
-        <h5 class="mb-0">
-            <span class="badge bg-warning text-dark me-1">Open Bills</span>
-            Pending &amp; in-flight
-            @if (openManual.Count > 0)
-            { <span class="badge bg-danger ms-1">@openManual.Count</span> }
-        </h5>
-        <button class="btn btn-sm btn-outline-secondary" @onclick="OpenOneOffEntry">+ One-Off Bill</button>
-    </div>
-    @if (openManual.Count == 0)
-    {
-        <p class="text-muted small fst-italic mb-4">No open bills. Record an actual from a recurring bill above or add a one-off.</p>
-    }
-    else
-    {
-        <div class="table-responsive mb-4">
-            <table class="table table-hover align-middle">
-                <thead class="table-light">
-                    <tr>
-                        <th>Name</th>
-                        <th class="text-center">Due Date</th>
-                        <th class="text-center">Plan to Pay</th>
-                        <th class="text-end">Amount</th>
-                        <th class="text-center">Status</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var occ in openManual.OrderBy(o => o.DueDate))
-                    {
-                        var today2 = DateOnly.FromDateTime(DateTime.Today);
-                        var overdue = occ.DueDate < today2 && occ.Status != BillOccurrenceStatus.Submitted;
-                        <tr class="@(overdue ? "table-danger" : "")">
-                            <td class="fw-semibold">
-                                @occ.DisplayName
-                                @if (occ.IsOneOff) { <span class="badge bg-secondary ms-1 small">One-Off</span> }
-                            </td>
-                            <td class="text-center @(overdue ? "fw-semibold" : "")">@occ.DueDate.ToString("MMM d, yyyy")</td>
-                            <td class="text-center text-muted small">@(occ.PlannedPayDate.HasValue ? occ.PlannedPayDate.Value.ToString("MMM d, yyyy") : "—")</td>
-                            <td class="text-end">@((occ.ActualAmount ?? occ.EstimatedAmount).ToString("C"))</td>
-                            <td class="text-center">@OccurrenceStatusBadge(occ.Status)</td>
-                            <td class="text-end text-nowrap">
-                                @if (occ.Status is BillOccurrenceStatus.Estimated or BillOccurrenceStatus.Received)
-                                {
-                                    <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => OpenEditOccurrence(occ)">Edit</button>
-                                    <button class="btn btn-sm btn-outline-warning me-1" @onclick="() => AdvanceOccurrenceStatus(occ, BillOccurrenceStatus.Submitted)">📤 Submit</button>
-                                }
-                                @if (occ.Status == BillOccurrenceStatus.Submitted)
-                                {
-                                    <button class="btn btn-sm btn-outline-success me-1" @onclick="() => AdvanceOccurrenceStatus(occ, BillOccurrenceStatus.Confirmed)">✓ Confirm</button>
-                                }
-                                <button class="btn btn-sm btn-outline-danger" @onclick="() => _deletingOccurrence = occ">✕</button>
-                            </td>
-                        </tr>
                     }
                 </tbody>
             </table>
