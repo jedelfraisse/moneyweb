@@ -1,12 +1,16 @@
-<Project Sdk="Aspire.AppHost.Sdk/13.0.0">
+<Project Sdk="Aspire.AppHost.Sdk/13.6.1">
 
   <ItemGroup>
     <ProjectReference Include="..\MoneyWeb.Blazor\MoneyWeb.Blazor.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Aspire.Hosting.AppHost" Version="13.2.2" />
-    <PackageReference Include="Aspire.Hosting.SqlServer" Version="13.2.2" />
+    <PackageReference Include="Aspire.Hosting.AppHost" Version="13.6.1" />
+    <PackageReference Include="Aspire.Hosting.SqlServer" Version="13.6.1" />
+    <!-- Pinned past GHSA-qhrr-8q5h-9q3h; pulled in transitively by Aspire. Remove once Aspire ships >= 2.5.303. -->
+    <PackageReference Include="MessagePack" Version="2.5.303" />
+    <!-- Pinned past CVE-2026-84008 (GHSA-846f-f764-76mx); pulled in transitively. Remove once dependencies ship >= 10.0.13. -->
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
   </ItemGroup>
 
   <PropertyGroup>
@@ -15,6 +19,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <UserSecretsId>27713815-afda-49c2-ab32-6aaf9e32bdb7</UserSecretsId>
+    <!-- Keep NuGet-restored DCP/dashboard (pre-13.6 behavior) instead of delegating to the separate Aspire CLI. -->
+    <NoWarn>$(NoWarn);ASPIRE010</NoWarn>
   </PropertyGroup>
 
 </Project>

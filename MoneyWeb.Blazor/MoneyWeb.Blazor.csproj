@@ -10,8 +10,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Aspire.Microsoft.Data.SqlClient" Version="13.2.2" />
-    <PackageReference Include="MailKit" Version="4.17.0" />
+    <PackageReference Include="Aspire.Microsoft.Data.SqlClient" Version="13.6.1" />
+    <PackageReference Include="MailKit" Version="4.18.1" />
     <PackageReference Include="Sqids" Version="3.2.1" />
   </ItemGroup>
 
