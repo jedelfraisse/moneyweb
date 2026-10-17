@@ -1,0 +1,338 @@
+@page "/debts/{DebtId}"
+@rendermode InteractiveServer
+@using MoneyWeb.Blazor.Services
+@using MoneyWeb.Data.Models
+@using MoneyWeb.Data.Repositories.Interfaces
+@using MoneyWeb.Data.Services
+@attribute [Authorize]
+@inject CurrentUserService CurrentUserService
+@inject IDebtRepository DebtRepo
+@inject IDebtGroupRepository GroupRepo
+@inject IBankAccountRepository AccountRepo
+@inject ICashFlowRepository CashFlowRepo
+@inject IDebtProjectionService DebtProjectionSvc
+@inject DebtPayoffService PayoffSvc
+@inject NavigationManager Nav
+@inject SqidsEncoder<int> Sqids
+
+<PageTitle>@(_debt?.Name ?? "Debt") – MoneyWeb</PageTitle>
+
+@if (_loading)
+{
+    <p>Loading&hellip;</p>
+}
+else if (_debt is null)
+{
+    <div class="alert alert-warning">Debt not found.</div>
+    <a href="/debts" class="btn btn-secondary">← Back to Debts</a>
+}
+else
+{
+    var today = DateOnly.FromDateTime(DateTime.Today);
+    var d = _debt;
+
+    <nav aria-label="breadcrumb" class="mb-3">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/debts">Debts</a></li>
+            <li class="breadcrumb-item active">@d.Name</li>
+        </ol>
+    </nav>
+
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+        <div>
+            <h2 class="mb-0">@d.Name</h2>
+            <div class="text-muted">
+                @DebtTypeLabel(d.DebtType)@(string.IsNullOrWhiteSpace(d.Lender) ? "" : $" · {d.Lender}")
+                @if (!d.IsActive) { <span class="badge bg-secondary ms-1">Inactive</span> }
+            </div>
+        </div>
+        <a href="/debts" class="btn btn-outline-secondary btn-sm">Edit on Debts page</a>
+    </div>
+
+    @* ── Key numbers ── *@
+    <div class="row g-3 mb-4">
+        <div class="col-sm-6 col-lg-3">
+            <div class="card h-100"><div class="card-body">
+                <div class="text-muted small">Balance</div>
+                <div class="fs-4 fw-bold">@d.Balance.ToString("C")</div>
+                @if (d.CreditUsage is { } usage)
+                {
+                    <div class="small @(usage >= 0.9m ? "text-danger" : usage >= 0.3m ? "text-warning" : "text-success")">
+                        @((usage * 100m).ToString("F1"))% of @d.CreditLimit!.Value.ToString("C") limit
+                    </div>
+                }
+            </div></div>
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <div class="card h-100"><div class="card-body">
+                <div class="text-muted small">Interest rate</div>
+                <div class="fs-4 fw-bold">@((d.EffectiveInterestRate(today) * 100m).ToString("0.##"))%</div>
+                @if (d.HasActivePromo(today))
+                {
+                    <div class="small text-info-emphasis">Promo until @d.PromoExpirationDate!.Value.ToString("MMM d, yyyy"), then @((d.InterestRate * 100m).ToString("0.##"))%</div>
+                }
+            </div></div>
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <div class="card h-100"><div class="card-body">
+                <div class="text-muted small">Monthly payment</div>
+                <div class="fs-4 fw-bold">@d.MinimumPayment.ToString("C")</div>
+                <div class="small text-muted">
+                    @(d.IsFixedPayment ? "Fixed payment" : "Minimum")
+                    @if (d.TotalMonthlyFees > 0) { <span> + @d.TotalMonthlyFees.ToString("C") fees (avg/mo)</span> }
+                </div>
+            </div></div>
+        </div>
+        <div class="col-sm-6 col-lg-3">
+            <div class="card h-100"><div class="card-body">
+                <div class="text-muted small">Next payment</div>
+                <div class="fs-4 fw-bold">@(d.NextPaymentDate?.ToString("MMM d") ?? "—")</div>
+                <div class="small text-muted">
+                    @(d.PaymentMethod == DebtPaymentMethod.AutoDraft ? "Auto-draft" : "Manual")
+                    @if (d.LastPaymentDate is { } last) { <span> · last paid @last.ToString("MMM d")</span> }
+                </div>
+            </div></div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-6">
+            <div class="card h-100"><div class="card-body">
+                <h6 class="mb-2">Plan</h6>
+                <dl class="row small mb-0">
+                    <dt class="col-5 fw-normal text-muted">Paid from</dt>
+                    <dd class="col-7">
+                        @if (_bankAccount is not null)
+                        {
+                            <a href="/transactions/@Sqids.Encode(_bankAccount.Id)">@_bankAccount.Name</a>
+                            @if (d.BankAccountId is null) { <span class="text-muted"> (group default)</span> }
+                        }
+                        else { <span class="text-warning-emphasis">No bank account, so not in cash flow</span> }
+                    </dd>
+                    <dt class="col-5 fw-normal text-muted">Group</dt>
+                    <dd class="col-7">@(_group is null ? "None (minimum payments)" : $"{_group.Name} · {_group.Strategy} · {_group.MonthlyBudget:C}/mo")</dd>
+                    @if (_plan is not null)
+                    {
+                        <dt class="col-5 fw-normal text-muted">Next payment amount</dt>
+                        <dd class="col-7">@(_plan.NextPaymentAmounts.GetValueOrDefault(d.Id, d.MinimumPayment).ToString("C"))</dd>
+                        <dt class="col-5 fw-normal text-muted">Projected payoff</dt>
+                        <dd class="col-7">
+                            @if (_plan.NeverPaysOff && _group is null) { <span class="text-danger">Never: payment doesn’t cover interest</span> }
+                            else if (_plan.DebtPayoffDates.TryGetValue(d.Id, out var payoff)) { @payoff.ToString("MMM yyyy") }
+                            else { <span>—</span> }
+                        </dd>
+                        <dt class="col-5 fw-normal text-muted">Interest to payoff</dt>
+                        <dd class="col-7">@(_plan.DebtInterestPaid.GetValueOrDefault(d.Id).ToString("C"))</dd>
+                    }
+                </dl>
+            </div></div>
+        </div>
+        <div class="col-md-6">
+            <div class="card h-100"><div class="card-body">
+                <h6 class="mb-2">Fees</h6>
+                @if (d.Fees.Count == 0)
+                {
+                    <p class="text-muted small fst-italic mb-0">No fees.</p>
+                }
+                else
+                {
+                    <table class="table table-sm small mb-0">
+                        <tbody>
+                            @foreach (var f in d.Fees)
+                            {
+                                <tr class="@(f.IsActive ? "" : "text-muted")">
+                                    <td>@f.Name@(f.IsActive ? "" : " (inactive)")</td>
+                                    <td>@f.Frequency</td>
+                                    <td class="text-end">@f.Amount.ToString("C")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div></div>
+        </div>
+    </div>
+
+    @* ── Cash-flow entries for this debt ── *@
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+        <h5 class="mb-0">Payments in cash flow</h5>
+        <button class="btn btn-sm btn-outline-primary" @onclick="RebuildAsync" disabled="@_busy"
+                title="Regenerate this debt's projected payments from its current settings. Payments you moved, edited or submitted are kept and count as that month's payment.">
+            Rebuild schedule
+        </button>
+    </div>
+    @if (_message is not null)
+    {
+        <div class="alert alert-success alert-dismissible small py-2">@_message
+            <button type="button" class="btn-close" @onclick="() => _message = null"></button>
+        </div>
+    }
+    @if (_duplicates.Count > 0)
+    {
+        <div class="alert alert-warning small">
+            ⚠ <strong>@_duplicates.Count</strong> payment@(_duplicates.Count == 1 ? " looks" : "s look") like
+            @(_duplicates.Count == 1 ? "a duplicate" : "duplicates"): another payment for this debt is within 15 days of it.
+            Remove the one you don’t want.
+        </div>
+    }
+    @if (_entries.Count == 0)
+    {
+        <p class="text-muted small fst-italic">No pending payments in cash flow.</p>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Date</th>
+                        <th>Account</th>
+                        <th class="text-end">Amount</th>
+                        <th>Source</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var t in _entries.Take(_showAll ? int.MaxValue : 12))
+                    {
+                        var dup = _duplicates.Contains(t.Id);
+                        <tr>
+                            <td class="text-nowrap @(t.TransactionDate < today ? "text-danger fw-semibold" : "")">@t.TransactionDate.ToString("MMM d, yyyy")</td>
+                            <td>
+                                @if (_accounts.TryGetValue(t.BankAccountId, out var acct))
+                                {
+                                    <a href="/transactions/@Sqids.Encode(t.BankAccountId)">@acct</a>
+                                }
+                            </td>
+                            <td class="text-end text-nowrap">@((-t.Amount).ToString("C"))</td>
+                            <td class="small">
+                                @if (t.IsSubmitted) { <span class="badge bg-info text-dark me-1">Submitted</span> }
+                                @if (t.IsManualOverride && !t.IsSubmitted) { <span class="badge bg-secondary me-1" title="Moved or edited by you, so it's kept when the schedule is rebuilt">Manual</span> }
+                                @if (t.IsAutoDraft) { <span class="badge bg-light text-dark border me-1">Auto-draft</span> }
+                                @if (dup) { <span class="badge bg-warning text-dark me-1">Possible duplicate</span> }
+                                @if (t.TransactionDate < today) { <span class="badge bg-danger me-1">Past due</span> }
+                                <span class="text-muted">@SourceLabel(t)</span>
+                            </td>
+                            <td class="text-end text-nowrap">
+                                @if (_confirmRemoveId == t.Id)
+                                {
+                                    <button class="btn btn-sm btn-danger me-1" @onclick="() => RemoveAsync(t)" disabled="@_busy">Remove</button>
+                                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => _confirmRemoveId = null">Cancel</button>
+                                }
+                                else
+                                {
+                                    <button class="btn btn-sm btn-outline-danger" title="Remove this payment from cash flow" @onclick="() => _confirmRemoveId = t.Id">✕</button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        @if (_entries.Count > 12)
+        {
+            <button class="btn btn-link btn-sm p-0" @onclick="() => _showAll = !_showAll">
+                @(_showAll ? "Show fewer" : $"Show all {_entries.Count} payments")
+            </button>
+        }
+    }
+}
+
+@code {
+    [Parameter] public string DebtId { get; set; } = "";
+
+    private bool _loading = true;
+    private bool _busy;
+    private bool _showAll;
+    private int _userId;
+    private int? _confirmRemoveId;
+    private string? _message;
+
+    private Debt? _debt;
+    private DebtGroup? _group;
+    private BankAccount? _bankAccount;
+    private StrategyResult? _plan;
+    private Dictionary<int, string> _accounts = [];
+    private List<CashFlowTransaction> _entries = [];
+    private HashSet<int> _duplicates = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = await CurrentUserService.GetCurrentUserAsync();
+        if (user?.IsApproved != true) { Nav.NavigateTo("/"); return; }
+        _userId = user.Id;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        var id = Sqids.Decode(DebtId).FirstOrDefault();
+        _debt = await DebtRepo.GetByIdAsync(id, _userId);
+        if (_debt is null) { _loading = false; return; }
+
+        var accounts = (await AccountRepo.GetAllAsync(_userId)).ToList();
+        _accounts = accounts.ToDictionary(a => a.Id, a => a.Name);
+
+        _group = _debt.GroupId is { } gid ? await GroupRepo.GetWithDebtsAsync(gid, _userId) : null;
+        var bankId = _debt.BankAccountId ?? _group?.BankAccountId;
+        _bankAccount = accounts.FirstOrDefault(a => a.Id == bankId);
+
+        // Same plan the cash-flow projection uses: the group's strategy, or minimum payments when ungrouped.
+        _plan = _group is not null
+            ? PayoffSvc.Calculate(_group.Debts, _group.MonthlyBudget).ForStrategy(_group.Strategy)
+            : PayoffSvc.Calculate([_debt], _debt.MinimumPayment).MinimumOnly;
+
+        _entries = (await CashFlowRepo.GetForSourceAsync(_debt.Id, _userId, TransactionCategory.DebtPayment))
+            .Where(t => t.IsProjected)
+            .OrderBy(t => t.TransactionDate).ThenBy(t => t.Id)
+            .ToList();
+
+        // A debt is paid once a month, so two pending payments within half a month of each other are suspect.
+        _duplicates = [];
+        for (var i = 1; i < _entries.Count; i++)
+        {
+            if (_entries[i].TransactionDate.DayNumber - _entries[i - 1].TransactionDate.DayNumber <= 15)
+            {
+                _duplicates.Add(_entries[i - 1].Id);
+                _duplicates.Add(_entries[i].Id);
+            }
+        }
+        _loading = false;
+    }
+
+    private string SourceLabel(CashFlowTransaction t)
+    {
+        if (t.DebtGroupId is null) return "Ungrouped schedule";
+        if (t.DebtGroupId == _group?.Id) return $"{_group.Name} ({t.GeneratedByStrategy})";
+        return "From a different group (left over)";
+    }
+
+    private async Task RemoveAsync(CashFlowTransaction t)
+    {
+        _busy = true;
+        await CashFlowRepo.DeleteAsync(t.Id, _userId);
+        _confirmRemoveId = null;
+        _message = $"Removed the {t.TransactionDate:MMM d} payment.";
+        await LoadAsync();
+        _busy = false;
+    }
+
+    private async Task RebuildAsync()
+    {
+        _busy = true;
+        await DebtProjectionSvc.PushDebtAsync(_debt!.Id, _userId);
+        _message = "Schedule rebuilt.";
+        await LoadAsync();
+        _busy = false;
+    }
+
+    private static string DebtTypeLabel(DebtType t) => t switch
+    {
+        DebtType.CreditCard   => "Credit card",
+        DebtType.AutoLoan     => "Auto loan",
+        DebtType.StudentLoan  => "Student loan",
+        DebtType.PersonalLoan => "Personal loan",
+        DebtType.LineOfCredit => "Line of credit",
+        _                     => t.ToString()
+    };
+}

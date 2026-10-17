@@ -46,7 +46,10 @@ public class DebtProjectionService : IDebtProjectionService
 
         if (!effectiveBanks.Values.Any(id => id.HasValue)) return;
 
-        await _cfRepo.DeleteProjectedForGroupAsync(groupId, userId, includeManualOverrides);
+        // Per debt rather than per group, so rows a debt got before joining this group (ungrouped or another
+        // group) are replaced too instead of lingering beside the new schedule as duplicates.
+        foreach (var d in group.Debts)
+            await DeleteUpcomingGeneratedAsync(d.Id, userId, includeManualOverrides);
 
         var result = _payoffSvc.Calculate(group.Debts, group.MonthlyBudget);
         var cutoff = DateOnly.FromDateTime(DateTime.Today.AddMonths(HorizonMonths));
@@ -77,14 +80,14 @@ public class DebtProjectionService : IDebtProjectionService
                 GeneratedByStrategy = group.Strategy
             });
 
-        await _cfRepo.BulkInsertProjectedAsync(transactions);
+        await _cfRepo.BulkInsertProjectedAsync(await SkipPeriodsUserHandledAsync(transactions, userId));
     }
 
     private async Task PushUngroupedAsync(Debt debt, int userId)
     {
+        // Clear first: a debt that just left a group may have no bank account now, and its old rows must still go.
+        await DeleteUpcomingGeneratedAsync(debt.Id, userId, includeManualOverrides: false);
         if (!debt.BankAccountId.HasValue) return;
-
-        await _cfRepo.DeleteProjectedForSourceAsync(debt.Id, userId, TransactionCategory.DebtPayment);
 
         var result = _payoffSvc.Calculate([debt], debt.MinimumPayment);
         var minOnly = result.ForStrategy(PayoffStrategy.MinimumOnly);
@@ -111,6 +114,45 @@ public class DebtProjectionService : IDebtProjectionService
                 GeneratedByStrategy = PayoffStrategy.MinimumOnly
             });
 
-        await _cfRepo.BulkInsertProjectedAsync(transactions);
+        await _cfRepo.BulkInsertProjectedAsync(await SkipPeriodsUserHandledAsync(transactions, userId));
+    }
+
+    /// <summary>
+    /// Remove a debt's generated payments dated today or later. Past-dated pending payments stay: they were never
+    /// cleared or skipped, so they're still outstanding and keep counting against the balance until the user acts
+    /// on them (as on the Transactions page and for bills). The new schedule only starts from today.
+    /// </summary>
+    private async Task DeleteUpcomingGeneratedAsync(int debtId, int userId, bool includeManualOverrides)
+    {
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var rows = (await _cfRepo.GetForSourceAsync(debtId, userId, TransactionCategory.DebtPayment))
+            .Where(t => t.IsProjected && t.TransactionDate >= today
+                        && (includeManualOverrides || (!t.IsManualOverride && !t.IsSubmitted)));
+        foreach (var t in rows)
+            await _cfRepo.DeleteAsync(t.Id, userId);
+    }
+
+    /// <summary>
+    /// Rows the user has moved, edited or submitted survive regeneration on purpose — but each one still stands for
+    /// a scheduled payment. Drop the generated payment nearest each such row (within half a month) so the period
+    /// isn't paid twice in cash flow.
+    /// </summary>
+    private async Task<List<CashFlowTransaction>> SkipPeriodsUserHandledAsync(IEnumerable<CashFlowTransaction> generated, int userId)
+    {
+        var result = generated.ToList();
+        foreach (var debtId in result.Select(t => t.ReferenceId!.Value).Distinct().ToList())
+        {
+            var kept = (await _cfRepo.GetForSourceAsync(debtId, userId, TransactionCategory.DebtPayment))
+                .Where(t => t.IsProjected && (t.IsManualOverride || t.IsSubmitted));
+            foreach (var k in kept)
+            {
+                var nearest = result
+                    .Where(t => t.ReferenceId == debtId && Math.Abs(t.TransactionDate.DayNumber - k.TransactionDate.DayNumber) <= 15)
+                    .OrderBy(t => Math.Abs(t.TransactionDate.DayNumber - k.TransactionDate.DayNumber))
+                    .FirstOrDefault();
+                if (nearest is not null) result.Remove(nearest);
+            }
+        }
+        return result;
     }
 }
