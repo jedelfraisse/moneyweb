@@ -71,6 +71,18 @@ else
         </div>
     }
 
+    @if (_beforeThisMonth > 0)
+    {
+        <div class="alert alert-warning d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <span>
+                <strong>@_beforeThisMonth pending entr@(_beforeThisMonth == 1 ? "y" : "ies")</strong> in this account
+                @(_beforeThisMonth == 1 ? "is" : "are") from before @_thisMonth.ToString("MMMM"). Clear or skip them below, or catch up
+                to clear everything before a date across all accounts at once.
+            </span>
+            <a href="/catch-up" class="btn btn-sm btn-dark">Catch up</a>
+        </div>
+    }
+
     @if (_stale.Count > 0)
     {
         <div class="alert alert-warning d-flex flex-column gap-2">
@@ -410,6 +422,10 @@ else
     // Projected daily balance chart above the table.
     private const int ChartMonths = 3;
     private List<BalanceDay> _days = [];
+
+    // Pending entries left over from earlier months — prompts Catch Up.
+    private readonly DateOnly _thisMonth = new(DateTime.Today.Year, DateTime.Today.Month, 1);
+    private int _beforeThisMonth;
     private int? _changingDateId;
 
     // Pending items older than the lookback window — surfaced only when some exist.
@@ -501,6 +517,7 @@ else
             .ToList();
 
         _finalBalance = running;
+        _beforeThisMonth = raw.Count(t => t.IsProjected && t.TransactionDate < _thisMonth) + _stale.Count;
         _days = DailyBalances.Build(_account.CurrentBalance, raw, today, today.AddMonths(ChartMonths));
         _changingDateId = null;
         _submittingId = null;
