@@ -61,6 +61,16 @@ else
         </div>
     </div>
 
+    @if (_days.Count > 0)
+    {
+        <div class="card mb-3">
+            <div class="card-body">
+                <h6 class="mb-2">Projected daily balance <span class="text-muted fw-normal small">· next @ChartMonths months</span></h6>
+                <BalanceChart Days="_days" Opening="_account.CurrentBalance" />
+            </div>
+        </div>
+    }
+
     @if (_stale.Count > 0)
     {
         <div class="alert alert-warning d-flex flex-column gap-2">
@@ -396,6 +406,10 @@ else
     private BankAccount? _account;
     private List<MonthGroup> _months = [];
     private decimal _finalBalance;
+
+    // Projected daily balance chart above the table.
+    private const int ChartMonths = 3;
+    private List<BalanceDay> _days = [];
     private int? _changingDateId;
 
     // Pending items older than the lookback window — surfaced only when some exist.
@@ -471,6 +485,7 @@ else
             .ToList();
 
         _finalBalance = running;
+        _days = DailyBalances.Build(_account.CurrentBalance, raw, today, today.AddMonths(ChartMonths));
         _changingDateId = null;
         _submittingId = null;
         _loading = false;
