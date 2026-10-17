@@ -38,6 +38,7 @@ public static class DataServiceExtensions
         services.AddScoped<IBillCashFlowSyncService, BillCashFlowSyncService>();
         services.AddScoped<IMonthSnapshotService, MonthSnapshotService>();
         services.AddScoped<IBillPaymentService, BillPaymentService>();
+        services.AddScoped<ICatchUpService, CatchUpService>();
 
         // FluentMigrator
         services.AddFluentMigratorCore()

@@ -1,0 +1,170 @@
+@page "/catch-up"
+@rendermode InteractiveServer
+@using MoneyWeb.Blazor.Services
+@using MoneyWeb.Data.Models
+@using MoneyWeb.Data.Repositories.Interfaces
+@using MoneyWeb.Data.Services
+@attribute [Authorize]
+@inject CurrentUserService CurrentUserService
+@inject ICatchUpService CatchUpSvc
+@inject IBankAccountRepository AccountRepo
+@inject NavigationManager Nav
+@inject SqidsEncoder<int> Sqids
+
+<PageTitle>Catch Up – MoneyWeb</PageTitle>
+
+<h1>Catch up</h1>
+<p class="text-muted">
+    Haven’t kept MoneyWeb up to date for a while? Instead of clearing or skipping old items one at a time, treat
+    everything before a date as dealt with and start fresh from there. Nothing on or after that date is removed;
+    upcoming payments are rebuilt from today.
+</p>
+
+@if (_loading)
+{
+    <p>Loading&hellip;</p>
+}
+else if (_applied is not null)
+{
+    <div class="alert alert-success">
+        <strong>Caught up.</strong> @_applied.Items.Count change@(_applied.Items.Count == 1 ? "" : "s") made for everything before
+        @_applied.Cutoff.ToString("MMMM d, yyyy"), and projections were rebuilt from today.
+    </div>
+    <div class="card mb-3">
+        <div class="card-body">
+            <h5 class="card-title">Last step: update your bank balances</h5>
+            <p class="text-muted small">
+                The running balance in cash flow starts from each account’s current balance, so set it to what your bank shows today.
+            </p>
+            <table class="table table-sm align-middle mb-0">
+                <tbody>
+                    @foreach (var a in _accounts)
+                    {
+                        <tr>
+                            <td>@a.Name</td>
+                            <td class="text-end">@a.CurrentBalance.ToString("C")</td>
+                            <td class="text-end"><a class="btn btn-sm btn-outline-primary" href="/transactions/@Sqids.Encode(a.Id)">Update balance</a></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <a href="/" class="btn btn-secondary">Back to dashboard</a>
+}
+else
+{
+    <div class="card mb-3">
+        <div class="card-body d-flex flex-wrap align-items-end gap-3">
+            <div>
+                <label class="form-label">Treat everything before</label>
+                <input type="date" class="form-control" @bind="_cutoff" @bind:after="PreviewAsync" max="@_today.ToString("yyyy-MM-dd")" />
+            </div>
+            <div class="text-muted small pb-2">as dealt with. Default: the 1st of this month.</div>
+        </div>
+    </div>
+
+    @if (_preview is null || _preview.IsEmpty)
+    {
+        <div class="alert alert-info">Nothing to catch up before @_cutoff.ToString("MMMM d, yyyy"). You’re up to date.</div>
+    }
+    else
+    {
+        <div class="row g-3 mb-3">
+            @foreach (var (area, what) in Areas)
+            {
+                var n = _preview.Count(area);
+                if (n == 0) continue;
+                <div class="col-md-6">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-baseline">
+                                <h6 class="mb-1">@area</h6>
+                                <span class="badge bg-secondary">@n</span>
+                            </div>
+                            <div class="text-muted small mb-2">@what</div>
+                            <details>
+                                <summary class="small">Show @(n == 1 ? "it" : $"all {n}")</summary>
+                                <table class="table table-sm small mt-2 mb-0">
+                                    <tbody>
+                                        @foreach (var i in _preview.Items.Where(i => i.Area == area))
+                                        {
+                                            <tr>
+                                                <td class="text-nowrap">@i.Date.ToString("MMM d, yyyy")</td>
+                                                <td>@i.Name</td>
+                                                <td class="text-end text-nowrap">@(i.Amount?.ToString("C"))</td>
+                                                <td class="text-muted">@i.Change</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </details>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+
+        <div class="alert alert-warning">
+            <div class="form-check mb-2">
+                <input class="form-check-input" type="checkbox" id="chkCatchUp" @bind="_confirmed" />
+                <label class="form-check-label" for="chkCatchUp">
+                    I understand: @_preview.Count("Cash flow") pending cash-flow entr@(_preview.Count("Cash flow") == 1 ? "y" : "ies")
+                    before @_cutoff.ToString("MMM d") will be removed and overdue bills marked paid. This can’t be undone.
+                </label>
+            </div>
+            <div class="small mb-2">Still owe something from before then? Leave it out by setting the date earlier, or handle that item first.</div>
+            <button class="btn btn-dark" disabled="@(!_confirmed || _busy)" @onclick="ApplyAsync">
+                @(_busy ? "Catching up…" : "Catch up")
+            </button>
+        </div>
+    }
+}
+
+@code {
+    private static readonly (string Area, string What)[] Areas =
+    [
+        ("Cash flow", "Pending entries dated before the cutoff are removed, the same as Skip."),
+        ("Open bills", "Overdue open bills are marked paid, so they close and their schedule moves on."),
+        ("Bill schedules", "Recurring bills stuck on an old due date move to their first date on or after the cutoff."),
+        ("Income", "Next payday moves forward to the first one on or after the cutoff."),
+        ("Sinking funds", "Due date moves forward by whole periods. Saved amounts are left as they are."),
+    ];
+
+    private readonly DateOnly _today = DateOnly.FromDateTime(DateTime.Today);
+    private bool _loading = true;
+    private bool _busy;
+    private bool _confirmed;
+    private int _userId;
+    private int _horizonMonths = 12;
+    private DateOnly _cutoff;
+    private CatchUpPreview? _preview;
+    private CatchUpPreview? _applied;
+    private List<BankAccount> _accounts = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = await CurrentUserService.GetCurrentUserAsync();
+        if (user?.IsApproved != true) { Nav.NavigateTo("/"); return; }
+        _userId = user.Id;
+        _horizonMonths = Math.Clamp(user.CashFlowHorizonMonths, 1, 60);
+        _cutoff = new DateOnly(_today.Year, _today.Month, 1);
+        await PreviewAsync();
+        _loading = false;
+    }
+
+    private async Task PreviewAsync()
+    {
+        if (_cutoff > _today) _cutoff = _today;
+        _confirmed = false;
+        _preview = await CatchUpSvc.PreviewAsync(_userId, _cutoff);
+    }
+
+    private async Task ApplyAsync()
+    {
+        _busy = true;
+        _applied = await CatchUpSvc.ApplyAsync(_userId, _cutoff, _horizonMonths);
+        _accounts = (await AccountRepo.GetAllAsync(_userId)).ToList();
+        _busy = false;
+    }
+}
