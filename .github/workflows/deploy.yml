@@ -44,12 +44,20 @@ jobs:
               server = server.split('://', 1)[1]
           server = server.rstrip('/')
           # Explicit FTPS: credentials and files must never cross the wire in plain text.
-          ftp = ftplib.FTP_TLS()
+          ftp = ftplib.FTP_TLS(timeout=60)
           ftp.connect(server)
           ftp.login(os.environ['FTP_USERNAME'], os.environ['FTP_PASSWORD'])
           ftp.prot_p()
-          ftp.storbinary('STOR app_offline.htm', io.BytesIO(content))
-          ftp.quit()
+          # Not storbinary(): the host resets the data connection during the TLS close handshake
+          # (unwrap), failing the step even though the file arrived. Send, close, then check the reply.
+          conn = ftp.transfercmd('STOR app_offline.htm')
+          conn.sendall(content)
+          conn.close()
+          ftp.voidresp()
+          try:
+              ftp.quit()
+          except (OSError, EOFError):
+              ftp.close()
           print('app_offline.htm uploaded')
           PYEOF
           sleep 5
@@ -85,7 +93,7 @@ jobs:
               server = server.split('://', 1)[1]
           server = server.rstrip('/')
           # Explicit FTPS: credentials and files must never cross the wire in plain text.
-          ftp = ftplib.FTP_TLS()
+          ftp = ftplib.FTP_TLS(timeout=60)
           ftp.connect(server)
           ftp.login(os.environ['FTP_USERNAME'], os.environ['FTP_PASSWORD'])
           ftp.prot_p()
@@ -94,7 +102,10 @@ jobs:
               print('app_offline.htm deleted')
           except ftplib.error_perm:
               print('app_offline.htm not found, site already online')
-          ftp.quit()
+          try:
+              ftp.quit()
+          except (OSError, EOFError):
+              ftp.close()
           PYEOF
         env:
           FTP_SERVER: ${{ secrets.FTP_SERVER }}

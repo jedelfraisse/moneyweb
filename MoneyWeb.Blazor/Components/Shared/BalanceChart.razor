@@ -1,0 +1,136 @@
+@using MoneyWeb.Data.Services
+@using System.Globalization
+
+@* Day-by-day projected balance as a step line (the balance only moves when a transaction lands).
+   The line is SVG stretched to the box; every piece of text and the hover layer is HTML on top,
+   so labels never distort. Hover/focus a day for its balance and that day's transactions. *@
+
+@if (Days.Count > 0)
+{
+    var lo = Math.Min(Opening, Days.Min(d => d.Balance));
+    var hi = Math.Max(Opening, Days.Max(d => d.Balance));
+    // Show $0 when it's in range or close enough to matter (an overdraft risk), otherwise zoom to the movement.
+    if (lo > 0 && lo < hi - lo) lo = 0;
+    if (hi < 0) hi = 0;
+    var ticks = NiceTicks(lo, hi);
+    var yMin = ticks[0];
+    var yMax = ticks[^1];
+    var n = Days.Count;
+    double Y(decimal v) => yMax == yMin ? 50 : (double)((yMax - v) / (yMax - yMin)) * 100;
+    double X(int i) => (i + 0.5) / n * 100;
+    var lowIdx = Enumerable.Range(0, n).MinBy(i => Days[i].Balance);
+    var low = Days[lowIdx];
+    var path = BuildPath(Y, X);
+    var labelEvery = Math.Max(1, (int)Math.Ceiling(n / 6.0));
+
+    <div class="balance-chart" role="img"
+         aria-label="@($"Projected balance from {Days[0].Date:MMM d} to {Days[^1].Date:MMM d}: starts at {Opening:C}, ends at {Days[^1].Balance:C}, lowest {low.Balance:C} on {low.Date:MMM d}.")">
+        <div class="bc-plot" style="height:@(Height)px">
+            @foreach (var t in ticks)
+            {
+                <div class="bc-grid @(t == 0 && lo < 0 ? "bc-zero" : "")" style="top:@Pct(Y(t))"></div>
+                <div class="bc-ylabel" style="top:@Pct(Y(t))">@Compact(t)</div>
+            }
+            <svg viewBox="0 0 100 100" preserveAspectRatio="none" class="bc-svg" aria-hidden="true">
+                <path d="@path" />
+            </svg>
+
+            @* Direct label on the low point only — the tooltip carries every other value. *@
+            <div class="bc-dot bc-low" style="left:@Pct(X(lowIdx));top:@Pct(Y(low.Balance))"></div>
+            <div class="bc-lowlabel @(X(lowIdx) > 70 ? "bc-flip" : "")" style="left:@Pct(X(lowIdx));top:@Pct(Y(low.Balance))">
+                Low <strong class="@(low.Balance < 0 ? "text-danger" : "")">@low.Balance.ToString("C")</strong> · @low.Date.ToString("MMM d")
+            </div>
+
+            @for (var i = 0; i < n; i++)
+            {
+                var d = Days[i];
+                var flip = X(i) > 60;
+                <div class="bc-col" tabindex="0" style="left:@Pct(i * 100.0 / n);width:@Pct(100.0 / n)"
+                     aria-label="@($"{d.Date:ddd MMM d}: {d.Balance:C}")">
+                    <div class="bc-cross"></div>
+                    <div class="bc-dot" style="top:@Pct(Y(d.Balance))"></div>
+                    <div class="bc-tip @(flip ? "bc-flip" : "")">
+                        <div class="fw-bold @(d.Balance < 0 ? "text-danger" : "")">@d.Balance.ToString("C")</div>
+                        <div class="text-muted mb-1">@d.Date.ToString("ddd, MMM d")@(d.Date == Today ? " · today" : "")</div>
+                        @if (d.Transactions.Count == 0)
+                        {
+                            <div class="text-muted fst-italic">No transactions</div>
+                        }
+                        else
+                        {
+                            foreach (var t in d.Transactions.Take(6))
+                            {
+                                <div class="d-flex justify-content-between gap-3">
+                                    <span class="text-truncate">@(t.TransactionDate < d.Date ? "⏳ " : "")@t.Description</span>
+                                    <span class="text-nowrap">@(t.Amount >= 0 ? "+" : "−")@Math.Abs(t.Amount).ToString("C")</span>
+                                </div>
+                            }
+                            @if (d.Transactions.Count > 6)
+                            {
+                                <div class="text-muted">+@(d.Transactions.Count - 6) more</div>
+                            }
+                            @if (d.Transactions.Any(t => t.TransactionDate < d.Date))
+                            {
+                                <div class="text-muted mt-1">⏳ still pending from an earlier date</div>
+                            }
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+        <div class="bc-xaxis">
+            @for (var i = 0; i < n; i += labelEvery)
+            {
+                <span style="left:@Pct(X(i))">@Days[i].Date.ToString("MMM d")</span>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    /// <summary>End-of-day balances, one per consecutive day.</summary>
+    [Parameter, EditorRequired] public IReadOnlyList<BalanceDay> Days { get; set; } = [];
+
+    /// <summary>Balance before the first day's transactions (the account's current balance).</summary>
+    [Parameter] public decimal Opening { get; set; }
+
+    [Parameter] public DateOnly Today { get; set; } = DateOnly.FromDateTime(DateTime.Today);
+    [Parameter] public int Height { get; set; } = 180;
+
+    private static string Pct(double v) => v.ToString("0.###", CultureInfo.InvariantCulture) + "%";
+
+    private string BuildPath(Func<decimal, double> y, Func<int, double> x)
+    {
+        // Step-after: hold the previous balance until the middle of the day it changes, then jump.
+        var sb = new System.Text.StringBuilder();
+        sb.Append(CultureInfo.InvariantCulture, $"M0 {y(Opening):0.###}");
+        for (var i = 0; i < Days.Count; i++)
+            sb.Append(CultureInfo.InvariantCulture, $" H{x(i):0.###} V{y(Days[i].Balance):0.###}");
+        sb.Append(" H100");
+        return sb.ToString();
+    }
+
+    /// <summary>3–5 round tick values covering [lo, hi].</summary>
+    private static List<decimal> NiceTicks(decimal lo, decimal hi)
+    {
+        if (hi - lo < 1) { lo -= 50; hi += 50; }
+        var raw = (double)(hi - lo) / 4;
+        var mag = Math.Pow(10, Math.Floor(Math.Log10(raw)));
+        var step = (decimal)(new[] { 1, 2, 2.5, 5, 10 }.Select(m => m * mag).First(s => s >= raw));
+        var start = Math.Floor(lo / step) * step;
+        var ticks = new List<decimal>();
+        for (var t = start; t < hi + step; t += step)
+        {
+            ticks.Add(t);
+            if (t >= hi) break;
+        }
+        return ticks;
+    }
+
+    private static string Compact(decimal v)
+    {
+        var a = Math.Abs(v);
+        var s = a >= 1000 ? (a / 1000m).ToString("0.#", CultureInfo.InvariantCulture) + "K" : a.ToString("0", CultureInfo.InvariantCulture);
+        return (v < 0 ? "−$" : "$") + s;
+    }
+}

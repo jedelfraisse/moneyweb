@@ -10,6 +10,7 @@
 @inject IIncomeRepository IncomeRepository
 @inject ISinkingFundRepository SinkingFundRepository
 @inject IMonthSnapshotService MonthSnapshotService
+@inject SqidsEncoder<int> Sqids
 
 <PageTitle>MoneyWeb</PageTitle>
 
@@ -142,31 +143,86 @@ else
                     </div>
                     @if (m.Accounts.Count > 0)
                     {
+                        var missing = m.NotInCashFlow;
+                        var endBalance = missing.Count > 0 ? m.EstimatedEndOfMonth : m.CashFlowEndOfMonth;
                         <div class="hover-detail" tabindex="0">
                             <span class="text-muted small">Bank balance</span>
                             <span class="fw-bold ms-1">@m.BalanceNow.ToString("C")</span>
                             <span class="text-muted mx-1">→</span>
-                            <span class="fw-bold @(m.BalanceEndOfMonth < 0 ? "text-danger" : "")">@m.BalanceEndOfMonth.ToString("C")</span>
+                            <span class="fw-bold @(endBalance < 0 ? "text-danger" : "")">@(missing.Count > 0 ? "~" : "")@endBalance.ToString("C")</span>
                             <span class="text-muted small ms-1">by @m.MonthEnd.ToString("MMM d")</span>
-                            <div class="hover-detail-panel">
-                                <table class="table table-sm mb-1 small">
-                                    <thead><tr><th>Account</th><th class="text-end">Now</th><th class="text-end">@m.MonthEnd.ToString("MMM d")</th></tr></thead>
+                            @if (missing.Count > 0)
+                            {
+                                <span class="badge bg-warning text-dark ms-1">@missing.Count not in cash flow</span>
+                            }
+                            <div class="hover-detail-panel reconcile-panel">
+                                <div class="fw-semibold mb-1">How the month-end balance is figured</div>
+                                <table class="table table-sm mb-2 small">
                                     <tbody>
-                                        @foreach (var a in m.Accounts)
+                                        <tr><td>Balance now <span class="text-muted">(checking &amp; savings)</span></td><td class="text-end">@m.BalanceNow.ToString("C")</td></tr>
+                                        <tr><td>+ Income to come, in cash flow</td><td class="text-end">@Signed(m.ScheduledToComeTotal)</td></tr>
+                                        <tr><td>− Bills &amp; payments to go, in cash flow</td><td class="text-end">@Signed(-m.ScheduledToGoTotal)</td></tr>
+                                        <tr><td>± Other pending cash-flow entries <span class="text-muted">(@m.OtherPending.Count)</span></td><td class="text-end">@Signed(m.OtherPendingTotal)</td></tr>
+                                        <tr class="fw-semibold"><td>= Cash-flow projection <span class="text-muted fw-normal">(as on Transactions)</span></td><td class="text-end">@m.CashFlowEndOfMonth.ToString("C")</td></tr>
+                                        @if (missing.Count > 0)
                                         {
-                                            <tr>
-                                                <td>@a.Name</td>
-                                                <td class="text-end">@a.Now.ToString("C")</td>
-                                                <td class="text-end @(a.EndOfMonth < 0 ? "text-danger" : "")">@a.EndOfMonth.ToString("C")</td>
-                                            </tr>
+                                            <tr><td>± Items not in any bank account’s cash flow <span class="text-muted">(@missing.Count)</span></td><td class="text-end">@Signed(missing.Sum(i => i.SignedAmount))</td></tr>
+                                            <tr class="fw-semibold"><td>= Estimated, if those are paid from these accounts</td><td class="text-end">~@m.EstimatedEndOfMonth.ToString("C")</td></tr>
                                         }
                                     </tbody>
                                 </table>
-                                <div class="text-muted small">Checking &amp; savings, after everything still pending in cash flow through month end.</div>
+                                @if (missing.Count > 0)
+                                {
+                                    <div class="fw-semibold small">Not in cash flow</div>
+                                    <div class="text-muted small mb-1">Link the bill to a bank account (or record it) so it shows up there.</div>
+                                    @ItemList(missing, "")
+                                }
+                                @if (m.OtherPending.Count > 0)
+                                {
+                                    <div class="fw-semibold small mt-2">Other pending cash-flow entries</div>
+                                    <div class="text-muted small mb-1">Sinking funds, manual entries, leftovers from earlier dates, and entries for items already marked paid. Clear or skip any that are done.</div>
+                                    <table class="table table-sm mb-0 small">
+                                        <tbody>
+                                            @foreach (var l in m.OtherPending)
+                                            {
+                                                <tr class="@(l.Date < m.Today ? "text-danger" : "")">
+                                                    <td class="text-nowrap">@l.Date.ToString("MMM d")</td>
+                                                    <td>@l.Description <span class="text-muted">· @l.Account</span></td>
+                                                    <td class="text-end text-nowrap">@Signed(l.Amount)</td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                }
                             </div>
                         </div>
                     }
                 </div>
+
+                @if (m.Accounts.Count > 0)
+                {
+                    var chartAccount = m.Accounts.FirstOrDefault(a => a.AccountId == Account)
+                        ?? m.Accounts.MaxBy(a => a.Days.Sum(d => d.Transactions.Count))!;
+                    <div class="mt-3 pt-3 border-top">
+                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                            <h6 class="mb-0">Daily balance through @m.MonthEnd.ToString("MMM d") <span class="text-muted fw-normal small">· @chartAccount.Name</span></h6>
+                            @if (m.Accounts.Count > 1)
+                            {
+                                <nav class="nav nav-pills small">
+                                    @foreach (var a in m.Accounts)
+                                    {
+                                        <a class="nav-link py-1 px-2 @(a == chartAccount ? "active" : "")" href="/?account=@a.AccountId">@a.Name</a>
+                                    }
+                                </nav>
+                            }
+                        </div>
+                        <BalanceChart Days="chartAccount.Days" Opening="chartAccount.Now" Today="m.Today" />
+                        <div class="text-muted small mt-1">
+                            From this account’s cash flow; items not in cash flow aren’t included.
+                            <a href="@($"/transactions/{Sqids.Encode(chartAccount.AccountId)}")">See transactions</a>
+                        </div>
+                    </div>
+                }
             </div>
         </div>
     }
@@ -370,6 +426,11 @@ else
         _loading = false;
     }
 
+    // Static SSR page, so the chart's account picker is a plain link.
+    [SupplyParameterFromQuery] public int? Account { get; set; }
+
+    private static string Signed(decimal v) => (v >= 0 ? "+" : "−") + Math.Abs(v).ToString("C");
+
     private RenderFragment ItemList(IEnumerable<MonthItem> items, string emptyText)
     {
         var list = items.ToList();
@@ -386,6 +447,10 @@ else
                             @if (i.Kind == MonthItemKind.Debt)
                             {
                                 <span class="badge bg-secondary-subtle text-secondary-emphasis ms-1">debt</span>
+                            }
+                            @if (!i.IsDone && !i.InCashFlow)
+                            {
+                                <span class="badge bg-warning-subtle text-warning-emphasis ms-1" title="No entry in any bank account's cash flow, so the bank balance doesn't include it">not in cash flow</span>
                             }
                         </td>
                         <td class="text-end text-nowrap">@(i.IsEstimate ? "~" : "")@i.Amount.ToString("C")</td>
