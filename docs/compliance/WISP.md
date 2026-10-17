@@ -3,8 +3,8 @@
 | | |
 |---|---|
 | **Version** | 0.1 (draft, development phase) |
-| **Effective** | _[date approved]_ |
-| **Owner / Qualified Individual** | _[Name]_, Owner & Operator, delfraisse.com |
+| **Effective** | pending |
+| **Owner / Qualified Individual** | Jonathan Delfraisse, Owner & Operator, delfraisse.com |
 | **Contact** | support@delfraisse.com |
 | **Next review** | 12 months from effective date, or sooner per §13 |
 
