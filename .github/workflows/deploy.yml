@@ -43,9 +43,11 @@ jobs:
           if '://' in server:
               server = server.split('://', 1)[1]
           server = server.rstrip('/')
-          ftp = ftplib.FTP()
+          # Explicit FTPS: credentials and files must never cross the wire in plain text.
+          ftp = ftplib.FTP_TLS()
           ftp.connect(server)
           ftp.login(os.environ['FTP_USERNAME'], os.environ['FTP_PASSWORD'])
+          ftp.prot_p()
           ftp.storbinary('STOR app_offline.htm', io.BytesIO(content))
           ftp.quit()
           print('app_offline.htm uploaded')
@@ -62,6 +64,7 @@ jobs:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ftps   # encrypted — the upload includes appsettings.Production.json
           local-dir: ./publish/
           server-dir: /
           dangerous-clean-slate: false
@@ -81,9 +84,11 @@ jobs:
           if '://' in server:
               server = server.split('://', 1)[1]
           server = server.rstrip('/')
-          ftp = ftplib.FTP()
+          # Explicit FTPS: credentials and files must never cross the wire in plain text.
+          ftp = ftplib.FTP_TLS()
           ftp.connect(server)
           ftp.login(os.environ['FTP_USERNAME'], os.environ['FTP_PASSWORD'])
+          ftp.prot_p()
           try:
               ftp.delete('app_offline.htm')
               print('app_offline.htm deleted')
