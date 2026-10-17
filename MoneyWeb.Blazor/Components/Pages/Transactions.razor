@@ -443,7 +443,7 @@ else
         {
             (TransactionCategory.DebtPayment, int id)           => $"/debts/{Sqids.Encode(id)}",
             (TransactionCategory.LoanRepaymentReceived, int id) => $"/loans/{Sqids.Encode(id)}",
-            (TransactionCategory.Bill, not null)                => "/bills",
+            (TransactionCategory.Bill, _) when t.ReferenceId.HasValue || t.BillOccurrenceId.HasValue => "/bills",
             (TransactionCategory.Income, not null)              => "/income",
             _                                                   => null
         };
@@ -527,7 +527,9 @@ else
     private async Task Unsubmit(CashFlowTransaction t)
     {
         await CashFlowRepo.MarkAsUnsubmittedAsync(t.Id, _userId);
-        if (t.Category == TransactionCategory.Bill && t.ReferenceId.HasValue)
+        if (t.Category == TransactionCategory.Bill && t.BillOccurrenceId is { } occId)
+            await UpdateLinkedOccurrenceAsync(occId, o => { o.Status = BillOccurrenceStatus.Received; o.SubmittedDate = null; });
+        else if (t.Category == TransactionCategory.Bill && t.ReferenceId.HasValue)
             await BillRepo.UpdateOccurrenceStatusByBillAndPayDateAsync(
                 t.ReferenceId.Value, _userId, t.TransactionDate, BillOccurrenceStatus.Received, null);
         await LoadAsync();
@@ -537,7 +539,14 @@ else
     {
         var originalDate = t.TransactionDate;
         await CashFlowRepo.MarkAsSubmittedAsync(t.Id, _userId, _submitDate);
-        if (t.Category == TransactionCategory.Bill && t.ReferenceId.HasValue)
+        if (t.Category == TransactionCategory.Bill && t.BillOccurrenceId is { } occId)
+            await UpdateLinkedOccurrenceAsync(occId, o =>
+            {
+                o.Status = BillOccurrenceStatus.Submitted;
+                o.SubmittedDate = DateOnly.FromDateTime(DateTime.Today);
+                o.PlannedPayDate = _submitDate == o.DueDate ? null : _submitDate;
+            });
+        else if (t.Category == TransactionCategory.Bill && t.ReferenceId.HasValue)
             // Move the occurrence's planned pay date along with the transaction — they're matched by date,
             // so letting them drift apart orphans the open bill when this is later cleared or skipped.
             await BillRepo.UpdateOccurrenceStatusByBillAndPayDateAsync(t.ReferenceId.Value, _userId, originalDate,
@@ -555,10 +564,20 @@ else
     private async Task SkipTransaction(CashFlowTransaction t)
     {
         // Skipping a bill CF transaction also removes the corresponding open bill occurrence
-        if (t.Category == TransactionCategory.Bill && t.ReferenceId.HasValue)
+        if (t.Category == TransactionCategory.Bill && t.BillOccurrenceId is { } occId)
+            await BillRepo.DeleteOccurrenceAsync(occId, _userId);
+        else if (t.Category == TransactionCategory.Bill && t.ReferenceId.HasValue)
             await BillRepo.DeleteOccurrenceByBillAndPayDateAsync(t.ReferenceId.Value, _userId, t.TransactionDate);
         await CashFlowRepo.DeleteAsync(t.Id, _userId);
         await LoadAsync();
+    }
+
+    private async Task UpdateLinkedOccurrenceAsync(int occurrenceId, Action<BillOccurrence> change)
+    {
+        var occ = await BillRepo.GetOccurrenceByIdAsync(occurrenceId, _userId);
+        if (occ is null) return;
+        change(occ);
+        await BillRepo.UpdateOccurrenceAsync(occ);
     }
 
     private void BeginConfirm(CashFlowTransaction t, bool isClearing)
@@ -595,7 +614,15 @@ else
         }
         // Bills: clearing closes the open occurrence (or records one, e.g. for an auto-draft) so the Bills page
         // doesn't keep it open and its next due date advances; skipping removes the open occurrence.
-        if (tx.Category == TransactionCategory.Bill && tx.ReferenceId.HasValue)
+        if (tx.Category == TransactionCategory.Bill && tx.BillOccurrenceId is { } occId)
+        {
+            // Linked to one exact occurrence (one-offs, sinking-fund bills, anything added from the Bills page).
+            if (_confirmIsClearing)
+                await BillRepo.ConfirmOccurrenceAsync(occId, _userId, Math.Abs(tx.Amount));
+            else
+                await BillRepo.DeleteOccurrenceAsync(occId, _userId);
+        }
+        else if (tx.Category == TransactionCategory.Bill && tx.ReferenceId.HasValue)
         {
             if (_confirmIsClearing)
                 await BillRepo.ConfirmPaymentByBillAndPayDateAsync(tx.ReferenceId.Value, _userId, tx.TransactionDate, Math.Abs(tx.Amount));

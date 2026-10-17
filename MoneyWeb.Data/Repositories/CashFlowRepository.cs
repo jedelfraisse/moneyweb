@@ -228,16 +228,16 @@ public class CashFlowRepository(string connectionString) : ICashFlowRepository
         await conn.ExecuteAsync("""
             INSERT INTO CashFlowTransactions
                 (UserId, BankAccountId, TransactionDate, Description, Amount, Category,
-                 ReferenceId, DebtGroupId, IsProjected, IsManualOverride, IsAutoDraft, IsSubmitted,
+                 ReferenceId, DebtGroupId, BillOccurrenceId, IsProjected, IsManualOverride, IsAutoDraft, IsSubmitted,
                  GeneratedByStrategy, CreatedAt, UpdatedAt)
             VALUES
                 (@UserId, @BankAccountId, @TransactionDate, @Description, @Amount, @Category,
-                 @ReferenceId, NULL, 1, 1, @IsAutoDraft, @IsSubmitted,
+                 @ReferenceId, NULL, @BillOccurrenceId, 1, 1, @IsAutoDraft, @IsSubmitted,
                  NULL, GETUTCDATE(), GETUTCDATE())
             """, new
         {
             t.UserId, t.BankAccountId, t.TransactionDate, t.Description,
-            t.Amount, Category = (int)t.Category, t.ReferenceId, t.IsAutoDraft, t.IsSubmitted
+            t.Amount, Category = (int)t.Category, t.ReferenceId, t.BillOccurrenceId, t.IsAutoDraft, t.IsSubmitted
         });
     }
 
@@ -260,6 +260,25 @@ public class CashFlowRepository(string connectionString) : ICashFlowRepository
               AND Category = @Category AND IsProjected = 1 AND IsManualOverride = 1
               AND TransactionDate = @Date
             """, new { ReferenceId = referenceId, UserId = userId, Category = (int)category, Date = date });
+    }
+
+    public async Task SetSubmittedForOccurrenceAsync(int billOccurrenceId, int userId, bool submitted, DateOnly? newDate = null)
+    {
+        using var conn = Connect();
+        await conn.ExecuteAsync("""
+            UPDATE CashFlowTransactions
+            SET IsSubmitted = @Submitted, IsManualOverride = 1,
+                TransactionDate = COALESCE(@NewDate, TransactionDate), UpdatedAt = GETUTCDATE()
+            WHERE BillOccurrenceId = @OccId AND UserId = @UserId AND IsProjected = 1
+            """, new { OccId = billOccurrenceId, UserId = userId, Submitted = submitted, NewDate = newDate });
+    }
+
+    public async Task DeleteForOccurrenceAsync(int billOccurrenceId, int userId)
+    {
+        using var conn = Connect();
+        await conn.ExecuteAsync(
+            "DELETE FROM CashFlowTransactions WHERE BillOccurrenceId = @OccId AND UserId = @UserId AND IsProjected = 1",
+            new { OccId = billOccurrenceId, UserId = userId });
     }
 
     public async Task MarkSubmittedForSourceOnDateAsync(int referenceId, int userId, TransactionCategory category, DateOnly date)

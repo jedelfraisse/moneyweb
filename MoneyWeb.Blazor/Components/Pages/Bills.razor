@@ -10,6 +10,7 @@
 @inject IBankAccountRepository AccountRepo
 @inject ICashFlowRepository CashFlowRepo
 @inject IBillCashFlowSyncService SyncSvc
+@inject IBillPaymentService BillPaymentSvc
 @inject SqidsEncoder<int> Sqids
 
 <PageTitle>Bills – MoneyWeb</PageTitle>
@@ -109,10 +110,11 @@ else
                             <td class="fw-semibold">
                                 @occ.DisplayName
                                 @if (occ.IsOneOff) { <span class="badge bg-secondary ms-1 small">One-Off</span> }
+                                @if (occ.SinkingFundId.HasValue) { <span class="badge bg-info-subtle text-info-emphasis ms-1 small" title="A sinking fund saved for this bill">Sinking fund</span> }
                                 @if (_openMissingCashFlow.Contains(occ.Id))
                                 {
                                     <span class="badge bg-light text-danger border border-danger ms-1 small"
-                                          title="No matching entry in the bank account's cash flow — it was probably already cleared or skipped there. ✓ Confirm if it was paid, or ✕ to remove it.">⚠ Not in cash flow</span>
+                                          title="No pending payment for this bill in any bank account's cash flow. Use + Cash flow to schedule it, ✓ Confirm if it was already paid, or ✕ to remove it.">⚠ Not in cash flow</span>
                                 }
                             </td>
                             <td class="text-center @(overdue ? "fw-semibold" : "")">@occ.DueDate.ToString("MMM d, yyyy")</td>
@@ -120,6 +122,11 @@ else
                             <td class="text-end">@((occ.ActualAmount ?? occ.EstimatedAmount).ToString("C"))</td>
                             <td class="text-center">@OccurrenceStatusBadge(occ.Status)</td>
                             <td class="text-end text-nowrap">
+                                @if (_openMissingCashFlow.Contains(occ.Id))
+                                {
+                                    <button class="btn btn-sm btn-outline-primary me-1" title="Schedule this payment in a bank account's cash flow"
+                                            @onclick="() => OpenAddToCashFlow(occ)">+ Cash flow</button>
+                                }
                                 @if (occ.Status is BillOccurrenceStatus.Estimated or BillOccurrenceStatus.Received)
                                 {
                                     <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => OpenEditOccurrence(occ)">Edit</button>
@@ -554,6 +561,58 @@ else
 }
 
 <!-- ── Delete Occurrence Confirm Modal ──────────────────────────────── -->
+@if (_addToFlowOcc is not null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.4)">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Add to cash flow – @_addToFlowOcc.DisplayName</h5>
+                    <button type="button" class="btn-close" @onclick="() => _addToFlowOcc = null"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small">
+                        Schedules this bill as a pending payment in the account below. Submitting, clearing or skipping it there
+                        updates this bill too.
+                    </p>
+                    <div class="mb-3">
+                        <label class="form-label">Pay from</label>
+                        <select class="form-select" @bind="_addToFlowAccountId">
+                            <option value="0">— Choose an account —</option>
+                            @foreach (var acct in _bankAccounts)
+                            {
+                                <option value="@acct.Id">@acct.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="row g-3">
+                        <div class="col">
+                            <label class="form-label">Pay date</label>
+                            <input type="date" class="form-control" @bind="_addToFlowDate" />
+                            <div class="form-text">Due @_addToFlowOcc.DueDate.ToString("MMM d, yyyy")</div>
+                        </div>
+                        <div class="col">
+                            <label class="form-label">Amount</label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input type="number" step="0.01" min="0" class="form-control" @bind="_addToFlowAmount" />
+                            </div>
+                        </div>
+                    </div>
+                    @if (_addToFlowError is not null)
+                    {
+                        <div class="alert alert-danger small mt-3 mb-0">@_addToFlowError</div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="() => _addToFlowOcc = null">Cancel</button>
+                    <button class="btn btn-primary" @onclick="SaveAddToCashFlow">Add to cash flow</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 @if (_deletingOccurrence is not null)
 {
     <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.4)">
@@ -916,6 +975,8 @@ else
             if (newStatus == BillOccurrenceStatus.Submitted)
                 await CashFlowRepo.MarkSubmittedForSourceOnDateAsync(occ.BillId.Value, user.Id, TransactionCategory.Bill, payDate);
         }
+        if (newStatus == BillOccurrenceStatus.Submitted)
+            await CashFlowRepo.SetSubmittedForOccurrenceAsync(occ.Id, user.Id, submitted: true);
         if (occ.BillId.HasValue)
         {
             _occurrences.Remove(occ.BillId.Value);
@@ -937,6 +998,7 @@ else
         var user = await CurrentUserService.GetCurrentUserAsync();
         if (user is null) return;
         await BillRepo.DeleteOccurrenceAsync(occ.Id, user.Id);
+        await CashFlowRepo.DeleteForOccurrenceAsync(occ.Id, user.Id);
         // Delete the corresponding CF transaction that was inserted when this occurrence was recorded
         if (occ.BillId.HasValue && !occ.IsOneOff)
         {
@@ -948,6 +1010,40 @@ else
             _occurrences.Remove(occ.BillId.Value);
             await LoadOccurrences(occ.BillId.Value);
         }
+        await LoadOpenOccurrencesAsync(user.Id);
+    }
+
+    // ── Add an open bill to cash flow ───────────────────────────────
+
+    private BillOccurrence? _addToFlowOcc;
+    private int _addToFlowAccountId;
+    private DateOnly _addToFlowDate;
+    private decimal _addToFlowAmount;
+    private string? _addToFlowError;
+
+    private void OpenAddToCashFlow(BillOccurrence occ)
+    {
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var bill = _bills.FirstOrDefault(b => b.Id == occ.BillId);
+        _addToFlowOcc = occ;
+        _addToFlowAccountId = bill?.BankAccountId ?? 0;
+        // An overdue bill still has to be paid — default to today rather than a date already gone.
+        var payDate = occ.PlannedPayDate ?? occ.DueDate;
+        _addToFlowDate = payDate < today ? today : payDate;
+        _addToFlowAmount = occ.ActualAmount ?? occ.EstimatedAmount;
+        _addToFlowError = null;
+    }
+
+    private async Task SaveAddToCashFlow()
+    {
+        if (_addToFlowOcc is null) return;
+        if (_addToFlowAccountId == 0) { _addToFlowError = "Choose the account it will be paid from."; return; }
+        if (_addToFlowAmount <= 0) { _addToFlowError = "Enter the amount to pay."; return; }
+        var user = await CurrentUserService.GetCurrentUserAsync();
+        if (user is null) return;
+
+        await BillPaymentSvc.AddToCashFlowAsync(_addToFlowOcc, _addToFlowAccountId, _addToFlowDate, _addToFlowAmount, user.Id);
+        _addToFlowOcc = null;
         await LoadOpenOccurrencesAsync(user.Id);
     }
 

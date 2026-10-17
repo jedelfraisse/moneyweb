@@ -112,15 +112,51 @@ public class BillRepository(string connectionString) : IBillRepository
             """, new { UserId = userId });
     }
 
+    public async Task<BillOccurrence?> GetOccurrenceByIdAsync(int id, int userId)
+    {
+        using var conn = Connect();
+        return await conn.QuerySingleOrDefaultAsync<BillOccurrence>(
+            """
+            SELECT o.*, b.Name AS BillName
+            FROM BillOccurrences o
+            LEFT JOIN Bills b ON b.Id = o.BillId
+            WHERE o.Id = @Id AND o.UserId = @UserId
+            """, new { Id = id, UserId = userId });
+    }
+
+    public async Task<IEnumerable<BillOccurrence>> GetOccurrencesForSinkingFundAsync(int userId)
+    {
+        using var conn = Connect();
+        return await conn.QueryAsync<BillOccurrence>(
+            """
+            SELECT o.*, b.Name AS BillName
+            FROM BillOccurrences o
+            LEFT JOIN Bills b ON b.Id = o.BillId
+            WHERE o.UserId = @UserId AND o.SinkingFundId IS NOT NULL
+            ORDER BY o.DueDate DESC
+            """, new { UserId = userId });
+    }
+
+    public async Task ConfirmOccurrenceAsync(int id, int userId, decimal amount)
+    {
+        using var conn = Connect();
+        await conn.ExecuteAsync(
+            $"""
+            UPDATE BillOccurrences SET
+                Status = {(int)BillOccurrenceStatus.Confirmed}, ActualAmount = COALESCE(ActualAmount, @Amount), UpdatedAt = GETUTCDATE()
+            WHERE Id = @Id AND UserId = @UserId
+            """, new { Id = id, UserId = userId, Amount = amount });
+    }
+
     public async Task<int> CreateOccurrenceAsync(BillOccurrence occ)
     {
         using var conn = Connect();
         return await conn.ExecuteScalarAsync<int>(
             """
             INSERT INTO BillOccurrences
-                (BillId, UserId, Name, DueDate, EstimatedAmount, ActualAmount, Status, PlannedPayDate, SubmittedDate, Notes, CreatedAt, UpdatedAt)
+                (BillId, UserId, Name, SinkingFundId, DueDate, EstimatedAmount, ActualAmount, Status, PlannedPayDate, SubmittedDate, Notes, CreatedAt, UpdatedAt)
             OUTPUT INSERTED.Id
-            VALUES (@BillId, @UserId, @Name, @DueDate, @EstimatedAmount, @ActualAmount, @Status, @PlannedPayDate, @SubmittedDate, @Notes, GETUTCDATE(), GETUTCDATE())
+            VALUES (@BillId, @UserId, @Name, @SinkingFundId, @DueDate, @EstimatedAmount, @ActualAmount, @Status, @PlannedPayDate, @SubmittedDate, @Notes, GETUTCDATE(), GETUTCDATE())
             """, occ);
     }
 
@@ -195,13 +231,12 @@ public class BillRepository(string connectionString) : IBillRepository
             $"""
             SELECT o.Id
             FROM BillOccurrences o
-            JOIN Bills b ON b.Id = o.BillId AND b.BankAccountId IS NOT NULL
             WHERE o.UserId = @UserId AND o.Status <> {(int)BillOccurrenceStatus.Confirmed}
               AND NOT EXISTS (
                 SELECT 1 FROM CashFlowTransactions c
-                WHERE c.UserId = o.UserId AND c.ReferenceId = o.BillId
-                  AND c.Category = {(int)TransactionCategory.Bill}
-                  AND c.TransactionDate = ISNULL(o.PlannedPayDate, o.DueDate))
+                WHERE c.UserId = o.UserId AND c.Category = {(int)TransactionCategory.Bill}
+                  AND (c.BillOccurrenceId = o.Id
+                       OR (c.ReferenceId = o.BillId AND c.TransactionDate = ISNULL(o.PlannedPayDate, o.DueDate))))
             """, new { UserId = userId });
     }
 }

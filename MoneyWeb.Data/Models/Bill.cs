@@ -100,6 +100,7 @@ public class BillOccurrence
     public int? BillId { get; set; }        // null for one-off occurrences
     public int UserId { get; set; }
     public string? Name { get; set; }       // used for one-offs when BillId is null
+    public int? SinkingFundId { get; set; } // the sinking fund that saved for this bill, if any
     public DateOnly DueDate { get; set; }
     public decimal EstimatedAmount { get; set; }
     public decimal? ActualAmount { get; set; }

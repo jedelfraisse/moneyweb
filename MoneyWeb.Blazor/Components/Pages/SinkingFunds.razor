@@ -11,6 +11,8 @@
 @inject ICashFlowRepository CashFlowRepo
 @inject IUserRepository UserRepo
 @inject ISinkingFundProjectionService SinkingFundProjectionSvc
+@inject IBillRepository BillRepo
+@inject IBillPaymentService BillPaymentSvc
 
 <PageTitle>Sinking Funds – MoneyWeb</PageTitle>
 
@@ -146,12 +148,50 @@ else
                             <span class="badge bg-danger">Behind</span>
                         }
 
+                        @if (CurrentBill(fund) is { } bill)
+                        {
+                            var billAmount = bill.ActualAmount ?? bill.EstimatedAmount;
+                            var covered = Math.Min(fund.CurrentSaved, billAmount);
+                            var shortBy = billAmount - covered;
+                            <div class="border rounded p-2 mt-3 small">
+                                <div class="d-flex flex-wrap align-items-center gap-2">
+                                    <span class="fw-semibold">Bill: @billAmount.ToString("C")</span>
+                                    <span class="text-muted">due @bill.DueDate.ToString("MMM d, yyyy")</span>
+                                    @BillStatusBadge(bill.Status)
+                                    @if (bill.Status != BillOccurrenceStatus.Confirmed && _billsMissingCashFlow.Contains(bill.Id))
+                                    {
+                                        <a href="/bills" class="badge bg-light text-danger border border-danger text-decoration-none"
+                                           title="Not scheduled in cash flow yet. Use + Cash flow on the Bills page.">⚠ Not in cash flow</a>
+                                    }
+                                </div>
+                                @if (bill.Status != BillOccurrenceStatus.Confirmed)
+                                {
+                                    <div class="mt-1">
+                                        Savings cover <strong>@covered.ToString("C")</strong> of @billAmount.ToString("C")
+                                        @if (shortBy > 0)
+                                        {
+                                            <span class="text-danger"> · short @shortBy.ToString("C")</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-success"> · fully covered</span>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        }
+
                         @if (!string.IsNullOrWhiteSpace(fund.Description))
                         {
                             <p class="text-muted small mt-2 mb-0">@fund.Description</p>
                         }
                     </div>
                     <div class="card-footer d-flex flex-wrap gap-2">
+                        @if (CurrentBill(fund) is null)
+                        {
+                            <button class="btn btn-sm btn-outline-primary" title="The real bill came in — record its amount and due date"
+                                    @onclick="() => OpenBillArrived(fund)">Bill arrived</button>
+                        }
                         <button class="btn btn-sm btn-outline-success" @onclick="() => OpenContribute(fund)">Contribute</button>
                         <button class="btn btn-sm btn-outline-warning" @onclick="() => OpenWithdraw(fund)">Withdraw</button>
                         <button class="btn btn-sm btn-outline-secondary" @onclick="() => _markPaidTarget = fund">Mark Paid</button>
@@ -308,6 +348,73 @@ else
     </div>
 }
 
+@* ── Bill Arrived ── *@
+@if (_billFund is not null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.4)">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Bill arrived – @_billFund.Name</h5>
+                    <button type="button" class="btn-close" @onclick="() => _billFund = null"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small">
+                        Records the real bill on the Bills page, linked to this fund. The fund's target and due date switch to the
+                        bill's, so the monthly amount to save recalculates.
+                    </p>
+                    <div class="row g-3 mb-3">
+                        <div class="col">
+                            <label class="form-label">Amount due</label>
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                <input type="number" step="0.01" min="0" class="form-control" @bind="_billAmount" />
+                            </div>
+                            <div class="form-text">Estimated @_billFund.TargetAmount.ToString("C")</div>
+                        </div>
+                        <div class="col">
+                            <label class="form-label">Due date</label>
+                            <input type="date" class="form-control" @bind="_billDueDate" />
+                        </div>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Schedule payment in cash flow</label>
+                        <select class="form-select" @bind="_billAccountId">
+                            <option value="0">Not yet</option>
+                            @foreach (var acct in _bankAccounts)
+                            {
+                                <option value="@acct.Id">Pay from @acct.Name</option>
+                            }
+                        </select>
+                    </div>
+                    @if (_billAccountId != 0)
+                    {
+                        <div class="mb-2">
+                            <label class="form-label">Pay date</label>
+                            <input type="date" class="form-control" @bind="_billPayDate" />
+                        </div>
+                    }
+                    @if (_billAmount > 0)
+                    {
+                        var shortBy = _billAmount - Math.Min(_billFund.CurrentSaved, _billAmount);
+                        <div class="small @(shortBy > 0 ? "text-danger" : "text-success")">
+                            Saved so far @_billFund.CurrentSaved.ToString("C")@(shortBy > 0 ? $" · short {shortBy:C}" : " · fully covered")
+                        </div>
+                    }
+                    @if (_billError is not null)
+                    {
+                        <div class="alert alert-danger small mt-3 mb-0">@_billError</div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="() => _billFund = null">Cancel</button>
+                    <button class="btn btn-primary" @onclick="SaveBillArrived">Record bill</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 @* ── Mark Paid Confirm ── *@
 @if (_markPaidTarget is not null)
 {
@@ -404,8 +511,55 @@ else
     {
         _bankAccounts = (await AccountRepo.GetAllAsync(_userId)).ToList();
         _funds = (await SinkingFundRepo.GetAllAsync(_userId, activeOnly: false)).ToList();
+        _fundBills = (await BillRepo.GetOccurrencesForSinkingFundAsync(_userId)).ToList();
+        _billsMissingCashFlow = [.. await BillRepo.GetOpenOccurrenceIdsMissingCashFlowAsync(_userId)];
         _loading = false;
     }
+
+    // ── Bills that arrived for a fund ──
+
+    private List<BillOccurrence> _fundBills = [];
+    private HashSet<int> _billsMissingCashFlow = [];
+    private SinkingFund? _billFund;
+    private decimal _billAmount;
+    private DateOnly _billDueDate;
+    private int _billAccountId;
+    private DateOnly _billPayDate;
+    private string? _billError;
+
+    /// <summary>The bill for the fund's current period: an open one, or one paid near the current due date
+    /// (before the fund has been marked paid and rolled forward).</summary>
+    private BillOccurrence? CurrentBill(SinkingFund fund) =>
+        _fundBills.Where(o => o.SinkingFundId == fund.Id)
+                  .FirstOrDefault(o => o.Status != BillOccurrenceStatus.Confirmed
+                                       || Math.Abs(o.DueDate.DayNumber - fund.NextDueDate.DayNumber) <= 31);
+
+    private void OpenBillArrived(SinkingFund fund)
+    {
+        _billFund = fund;
+        _billAmount = fund.TargetAmount;
+        _billDueDate = fund.NextDueDate;
+        _billAccountId = 0;
+        _billPayDate = fund.NextDueDate;
+        _billError = null;
+    }
+
+    private async Task SaveBillArrived()
+    {
+        if (_billFund is null) return;
+        if (_billAmount <= 0) { _billError = "Enter the amount due."; return; }
+        await BillPaymentSvc.RecordSinkingFundBillAsync(_billFund, _billAmount, _billDueDate,
+            _billAccountId == 0 ? null : _billAccountId, _billPayDate, _userId, _horizonMonths);
+        _billFund = null;
+        await LoadAsync();
+    }
+
+    private static RenderFragment BillStatusBadge(BillOccurrenceStatus status) => status switch
+    {
+        BillOccurrenceStatus.Confirmed => @<span class="badge bg-success">Paid</span>,
+        BillOccurrenceStatus.Submitted => @<span class="badge bg-info text-dark" title="Payment sent, waiting to clear">Submitted</span>,
+        _                              => @<span class="badge bg-warning text-dark">Pending</span>
+    };
 
     private void OpenAdd()
     {
