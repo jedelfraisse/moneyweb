@@ -163,13 +163,16 @@ public class DebtPayoffService
                 {
                     var paid = paymentsThisMonth[debt.Id];
                     if (paid <= 0) continue;
+                    // The simulation's first month is next month, but a payment still due this month is the
+                    // first one the user actually makes — date the schedule from it so it isn't skipped.
+                    var payMonth = PaysThisMonth(debt, today) ? currentDate.AddMonths(-1) : currentDate;
                     int day = debt.PaymentDayOfMonth.HasValue
-                        ? Math.Min(debt.PaymentDayOfMonth.Value, DateTime.DaysInMonth(currentDate.Year, currentDate.Month))
+                        ? Math.Min(debt.PaymentDayOfMonth.Value, DateTime.DaysInMonth(payMonth.Year, payMonth.Month))
                         : 1;
-                    var dueDate = new DateOnly(currentDate.Year, currentDate.Month, day);
+                    var dueDate = new DateOnly(payMonth.Year, payMonth.Month, day);
                     // Full per-occurrence amount, only in the month(s) it's actually due — not the
                     // amortized monthly average (that's Debt.TotalMonthlyFees, for budgeting displays).
-                    var fees = debt.Fees.Where(f => f.IsActive && f.IsDueIn(currentDate.Month)).Sum(f => f.Amount);
+                    var fees = debt.Fees.Where(f => f.IsActive && f.IsDueIn(payMonth.Month)).Sum(f => f.Amount);
                     schedule.Add(new ScheduledPayment(debt.Id, debt.Name, dueDate, paid, fees, balances[debt.Id], interestThisMonth.GetValueOrDefault(debt.Id)));
                 }
             }
@@ -197,6 +200,13 @@ public class DebtPayoffService
                                 ? debts.Sum(d => d.MinimumPayment) - monthlyBudget
                                 : 0m
         };
+    }
+
+    /// <summary>True when this month's payment is still ahead: its due day hasn't passed and nothing was paid this month.</summary>
+    private static bool PaysThisMonth(Debt debt, DateOnly today)
+    {
+        if (debt.NextPaymentDate is not { } next || next.Year != today.Year || next.Month != today.Month) return false;
+        return debt.LastPaymentDate is not { } last || last.Year != today.Year || last.Month != today.Month;
     }
 }
 

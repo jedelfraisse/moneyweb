@@ -108,7 +108,7 @@ else
                                             @t.TransactionDate.ToString("MMM d, yyyy")
                                         }
                                     </td>
-                                    <td>@t.Description</td>
+                                    <td>@SourceLink(t)</td>
                                     <td class="text-end fw-semibold @(t.Amount >= 0 ? "text-success" : "text-danger")">@t.Amount.ToString("C")</td>
                                     <td class="text-end text-nowrap">
                                         @if (_changingDateId != t.Id)
@@ -182,7 +182,7 @@ else
                                 <td class="text-nowrap">
                                     @t.TransactionDate.ToString("MMM d, yyyy")
                                 </td>
-                                <td>@t.Description</td>
+                                <td>@SourceLink(t)</td>
                                 <td class="text-end fw-semibold @(t.Amount >= 0 ? "text-success" : "text-danger")">
                                     @t.Amount.ToString("C")
                                     @if (t.IsProjected && t.Category == TransactionCategory.Bill)
@@ -435,6 +435,22 @@ else
     // Confirm/skip confirmation
     private CashFlowTransaction? _confirmingTransaction;
     private bool _confirmIsClearing;
+
+    /// <summary>Description linked to what generated the entry (debt, loan, bill or income), so it can be checked there.</summary>
+    private RenderFragment SourceLink(CashFlowTransaction t)
+    {
+        var href = (t.Category, t.ReferenceId) switch
+        {
+            (TransactionCategory.DebtPayment, int id)           => $"/debts/{Sqids.Encode(id)}",
+            (TransactionCategory.LoanRepaymentReceived, int id) => $"/loans/{Sqids.Encode(id)}",
+            (TransactionCategory.Bill, not null)                => "/bills",
+            (TransactionCategory.Income, not null)              => "/income",
+            _                                                   => null
+        };
+        return href is null
+            ? @<text>@t.Description</text>
+            : @<a href="@href" class="link-body-emphasis">@t.Description</a>;
+    }
 
     private record TransactionRow(CashFlowTransaction Transaction, decimal RunningBalance);
     private record MonthGroup(string Label, List<TransactionRow> Rows, decimal Subtotal);
