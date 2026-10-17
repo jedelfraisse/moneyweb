@@ -11,6 +11,7 @@ public class CashFlowTransaction
     public TransactionCategory Category { get; set; }
     public int? ReferenceId { get; set; }           // FK to Debt, Bill, Income, or Loan depending on Category
     public int? DebtGroupId { get; set; }           // which debt group generated this row (for bulk regen)
+    public int? BillOccurrenceId { get; set; }      // the specific bill occurrence this payment is for (incl. one-offs)
     public bool IsProjected { get; set; } = true;   // false = confirmed/cleared
     public bool IsSubmitted { get; set; }           // user notified vendor; awaiting clearance
     public bool IsManualOverride { get; set; }      // user customised this date — skip on auto-regen

@@ -25,7 +25,7 @@ public interface ISinkingFundProjectionService
 /// Extracted from SinkingFunds.razor so the Debts page (linking a fee to a newly created fund) can
 /// trigger the same push instead of creating a fund that silently never shows up anywhere in cash flow.
 /// </summary>
-public class SinkingFundProjectionService(ICashFlowRepository cfRepo) : ISinkingFundProjectionService
+public class SinkingFundProjectionService(ICashFlowRepository cfRepo, IBillRepository billRepo) : ISinkingFundProjectionService
 {
     public async Task PushAsync(SinkingFund fund, int userId, int horizonMonths)
     {
@@ -95,9 +95,20 @@ public class SinkingFundProjectionService(ICashFlowRepository cfRepo) : ISinking
 
         // Lump-sum payment dates within horizon — lands in the bucket if there is one, otherwise the
         // one account this fund has (soloAccountId already prefers BankAccountId when both are set).
+        // A period whose real bill has arrived is skipped: that bill's own payment (Bills / cash flow) is the
+        // payment now, and projecting both would count it twice.
+        var billDueDates = (await billRepo.GetOccurrencesForSinkingFundAsync(userId))
+            .Where(o => o.SinkingFundId == fund.Id)
+            .Select(o => o.DueDate)
+            .ToList();
         var payDate = fund.NextDueDate;
         while (payDate <= cutoff)
         {
+            if (billDueDates.Any(d => Math.Abs(d.DayNumber - payDate.DayNumber) <= 31))
+            {
+                payDate = payDate.AddMonths(fund.PeriodMonths);
+                continue;
+            }
             transactions.Add(new CashFlowTransaction
             {
                 UserId = userId,

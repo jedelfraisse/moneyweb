@@ -69,6 +69,13 @@ public interface ICashFlowRepository
     /// <summary>Delete all manual-override projected transactions for a source on a specific date (e.g. when deleting a recorded bill occurrence).</summary>
     Task DeleteManualProjectedOnDateAsync(int referenceId, int userId, TransactionCategory category, DateOnly date);
 
+    /// <summary>Set or clear "submitted" on the pending payment linked to a bill occurrence (by BillOccurrenceId),
+    /// optionally moving its date. Pins it as a manual override so regeneration leaves it alone.</summary>
+    Task SetSubmittedForOccurrenceAsync(int billOccurrenceId, int userId, bool submitted, DateOnly? newDate = null);
+
+    /// <summary>Delete the pending payment(s) linked to a bill occurrence (by BillOccurrenceId).</summary>
+    Task DeleteForOccurrenceAsync(int billOccurrenceId, int userId);
+
     /// <summary>Mark a bill occurrence's CF transaction as submitted (awaiting clearance), matched by
     /// source+date rather than by ID. Does not move the transaction's date — "submitted" is a status,
     /// not a reschedule; the payment still lands on its planned date.</summary>

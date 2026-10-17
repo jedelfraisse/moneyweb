@@ -19,9 +19,10 @@ public enum MonthItemStatus
 
 /// <param name="SourceId">The Bill, Debt or Income id (null for one-off bills).</param>
 /// <param name="CashFlowId">The pending cash-flow entry this item corresponds to, if any.</param>
+/// <param name="OccurrenceId">For bills recorded as an occurrence: its id (payments can link to it directly).</param>
 public record MonthItem(
     MonthItemKind Kind, string Name, DateOnly Date, decimal Amount, MonthItemStatus Status,
-    bool IsEstimate = false, int? SourceId = null, int? CashFlowId = null)
+    bool IsEstimate = false, int? SourceId = null, int? CashFlowId = null, int? OccurrenceId = null)
 {
     public bool IsDone => Status is MonthItemStatus.Paid or MonthItemStatus.Submitted or MonthItemStatus.AssumedPaid or MonthItemStatus.Received;
     public bool InCashFlow => CashFlowId.HasValue;
@@ -178,6 +179,14 @@ public class MonthSnapshotService(
     {
         if (item.CashFlowId.HasValue) return item;
 
+        // A payment linked to this exact occurrence is the match, wherever its date landed.
+        if (item.OccurrenceId is { } occId
+            && pending.FirstOrDefault(t => !claimed.Contains(t.Id) && t.BillOccurrenceId == occId) is { } linked)
+        {
+            claimed.Add(linked.Id);
+            return item with { CashFlowId = linked.Id };
+        }
+
         var (category, window) = item.Kind switch
         {
             MonthItemKind.Income => (TransactionCategory.Income, 7),
@@ -255,7 +264,7 @@ public class MonthSnapshotService(
             _ => date < today ? MonthItemStatus.Overdue : MonthItemStatus.Upcoming
         };
         return new MonthItem(MonthItemKind.Bill, o.DisplayName, date, o.ActualAmount ?? o.EstimatedAmount, status,
-            IsEstimate: o.ActualAmount is null, SourceId: o.BillId);
+            IsEstimate: o.ActualAmount is null, SourceId: o.BillId, OccurrenceId: o.Id);
     }
 
     private async Task<List<MonthItem>> BuildDebtsAsync(
