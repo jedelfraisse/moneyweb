@@ -2,12 +2,14 @@
 @using MoneyWeb.Blazor.Services
 @using MoneyWeb.Data.Models
 @using MoneyWeb.Data.Repositories.Interfaces
+@using MoneyWeb.Data.Services
 @inject CurrentUserService CurrentUserService
 @inject IDebtRepository DebtRepository
 @inject IBillRepository BillRepository
 @inject ILoanRepository LoanRepository
 @inject IIncomeRepository IncomeRepository
 @inject ISinkingFundRepository SinkingFundRepository
+@inject IMonthSnapshotService MonthSnapshotService
 
 <PageTitle>MoneyWeb</PageTitle>
 
@@ -79,6 +81,95 @@ else
 {
     @* Approved user – show dashboard summary *@
     <h2 class="mb-3">Dashboard</h2>
+
+    @* ── This month: where do I stand right now? Hover (or tap) a tile for the items behind it. ── *@
+    @if (_month is not null)
+    {
+        var m = _month;
+        var paidCount = m.Paid.Count();
+        var leftCount = m.Left.Count();
+        <div class="card mb-4 border-primary">
+            <div class="card-body">
+                <div class="d-flex flex-wrap justify-content-between align-items-baseline mb-3 gap-2">
+                    <h5 class="mb-0">@m.MonthStart.ToString("MMMM yyyy") — where you stand</h5>
+                    <span class="text-muted small">Hover or tap a number for details</span>
+                </div>
+                <div class="row g-3">
+                    <div class="col-sm-6 col-lg-3">
+                        <div class="month-tile hover-detail" tabindex="0">
+                            <div class="text-muted small">Bills &amp; payments paid</div>
+                            <div class="fs-4 fw-bold text-success">@paidCount <span class="fs-6 fw-normal text-muted">of @m.Outgoing.Count</span></div>
+                            <div class="small">@m.PaidTotal.ToString("C")</div>
+                            <div class="hover-detail-panel">@ItemList(m.Paid, "Nothing paid yet this month.")</div>
+                        </div>
+                    </div>
+                    <div class="col-sm-6 col-lg-3">
+                        <div class="month-tile hover-detail" tabindex="0">
+                            <div class="text-muted small">Still to pay</div>
+                            <div class="fs-4 fw-bold @(m.OverdueCount > 0 ? "text-danger" : "text-warning")">@leftCount</div>
+                            <div class="small">
+                                @m.LeftTotal.ToString("C")
+                                @if (m.OverdueCount > 0)
+                                {
+                                    <span class="badge bg-danger ms-1">@m.OverdueCount overdue</span>
+                                }
+                            </div>
+                            <div class="hover-detail-panel">@ItemList(m.Left, "All paid for the month. 🎉")</div>
+                        </div>
+                    </div>
+                    <div class="col-sm-6 col-lg-3">
+                        <div class="month-tile hover-detail" tabindex="0">
+                            <div class="text-muted small">Money in</div>
+                            <div class="fs-4 fw-bold text-success">+@m.InTotal.ToString("C")</div>
+                            <div class="small">@m.ReceivedTotal.ToString("C") received · @m.ExpectedTotal.ToString("C") to come</div>
+                            <div class="hover-detail-panel">@ItemList(m.Incoming, "No income scheduled this month.")</div>
+                        </div>
+                    </div>
+                    <div class="col-sm-6 col-lg-3">
+                        <div class="month-tile hover-detail" tabindex="0">
+                            <div class="text-muted small">Money out</div>
+                            <div class="fs-4 fw-bold text-danger">−@m.OutTotal.ToString("C")</div>
+                            <div class="small">@m.PaidTotal.ToString("C") paid · @m.LeftTotal.ToString("C") to go</div>
+                            <div class="hover-detail-panel">@ItemList(m.Outgoing, "No bills or payments this month.")</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="d-flex flex-wrap gap-4 mt-3 pt-3 border-top align-items-center">
+                    <div>
+                        <span class="text-muted small">Net for the month</span>
+                        <span class="fs-5 fw-bold ms-1 @(m.Net >= 0 ? "text-success" : "text-danger")">@(m.Net >= 0 ? "+" : "−")@Math.Abs(m.Net).ToString("C")</span>
+                    </div>
+                    @if (m.Accounts.Count > 0)
+                    {
+                        <div class="hover-detail" tabindex="0">
+                            <span class="text-muted small">Bank balance</span>
+                            <span class="fw-bold ms-1">@m.BalanceNow.ToString("C")</span>
+                            <span class="text-muted mx-1">→</span>
+                            <span class="fw-bold @(m.BalanceEndOfMonth < 0 ? "text-danger" : "")">@m.BalanceEndOfMonth.ToString("C")</span>
+                            <span class="text-muted small ms-1">by @m.MonthEnd.ToString("MMM d")</span>
+                            <div class="hover-detail-panel">
+                                <table class="table table-sm mb-1 small">
+                                    <thead><tr><th>Account</th><th class="text-end">Now</th><th class="text-end">@m.MonthEnd.ToString("MMM d")</th></tr></thead>
+                                    <tbody>
+                                        @foreach (var a in m.Accounts)
+                                        {
+                                            <tr>
+                                                <td>@a.Name</td>
+                                                <td class="text-end">@a.Now.ToString("C")</td>
+                                                <td class="text-end @(a.EndOfMonth < 0 ? "text-danger" : "")">@a.EndOfMonth.ToString("C")</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                                <div class="text-muted small">Checking &amp; savings, after everything still pending in cash flow through month end.</div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    }
 
     @* ── Scoreboard: the 3 headline numbers, full width ── *@
     var net = _monthlyIncome - _monthlyExpenses;
@@ -191,6 +282,7 @@ else
 @code {
     private bool _loading = true;
     private User? _currentUser;
+    private MonthSnapshot? _month;
 
     // Debt summary
     private int _debtCount;
@@ -271,8 +363,48 @@ else
             var loans = (await LoanRepository.GetAllAsync(_currentUser.Id, unsettledOnly: true)).ToList();
             _unsettledLoanCount = loans.Count;
             _outstandingLoanBalance = loans.Sum(l => l.Balance);
+
+            _month = await MonthSnapshotService.GetAsync(_currentUser.Id, DateOnly.FromDateTime(DateTime.Today));
         }
 
         _loading = false;
     }
+
+    private RenderFragment ItemList(IEnumerable<MonthItem> items, string emptyText)
+    {
+        var list = items.ToList();
+        if (list.Count == 0)
+            return @<div class="text-muted small fst-italic">@emptyText</div>;
+        return @<table class="table table-sm mb-0 small">
+            <tbody>
+                @foreach (var i in list)
+                {
+                    <tr>
+                        <td class="text-nowrap text-muted">@i.Date.ToString("MMM d")</td>
+                        <td>
+                            @i.Name
+                            @if (i.Kind == MonthItemKind.Debt)
+                            {
+                                <span class="badge bg-secondary-subtle text-secondary-emphasis ms-1">debt</span>
+                            }
+                        </td>
+                        <td class="text-end text-nowrap">@(i.IsEstimate ? "~" : "")@i.Amount.ToString("C")</td>
+                        <td class="text-nowrap">@StatusBadge(i.Status)</td>
+                    </tr>
+                }
+            </tbody>
+        </table>;
+    }
+
+    private static RenderFragment StatusBadge(MonthItemStatus status) => status switch
+    {
+        MonthItemStatus.Paid        => @<span class="badge bg-success">Paid</span>,
+        MonthItemStatus.Submitted   => @<span class="badge bg-info text-dark" title="Payment sent, waiting to clear">Submitted</span>,
+        MonthItemStatus.AssumedPaid => @<span class="badge bg-success-subtle text-success-emphasis" title="Auto-draft — assumed paid by the bank">Auto-drafted</span>,
+        MonthItemStatus.Overdue     => @<span class="badge bg-danger">Overdue</span>,
+        MonthItemStatus.Received    => @<span class="badge bg-success">Received</span>,
+        MonthItemStatus.Late        => @<span class="badge bg-warning text-dark" title="Pay date passed but not cleared in cash flow">Not cleared</span>,
+        MonthItemStatus.Expected    => @<span class="badge bg-light text-dark border">Expected</span>,
+        _                           => @<span class="badge bg-light text-dark border">Upcoming</span>
+    };
 }
