@@ -78,22 +78,38 @@ else
                 <div class="col-md-6">
                     <div class="card h-100">
                         <div class="card-body">
+                            @{ var changed = _preview.Items.Count(i => i.Area == area && ChoiceOf(i) != i.DefaultAction); }
                             <div class="d-flex justify-content-between align-items-baseline">
                                 <h6 class="mb-1">@area</h6>
-                                <span class="badge bg-secondary">@n</span>
+                                <span>
+                                    @if (changed > 0) { <span class="badge bg-info text-dark me-1">@changed changed</span> }
+                                    <span class="badge bg-secondary">@n</span>
+                                </span>
                             </div>
                             <div class="text-muted small mb-2">@what</div>
                             <details>
-                                <summary class="small">Show @(n == 1 ? "it" : $"all {n}")</summary>
+                                <summary class="small">Show @(n == 1 ? "it" : $"all {n}") · change what happens to each</summary>
                                 <table class="table table-sm small mt-2 mb-0">
                                     <tbody>
                                         @foreach (var i in _preview.Items.Where(i => i.Area == area))
                                         {
-                                            <tr>
+                                            var choice = ChoiceOf(i);
+                                            <tr class="@(choice != i.DefaultAction ? "table-info" : "")">
                                                 <td class="text-nowrap">@i.Date.ToString("MMM d, yyyy")</td>
-                                                <td>@i.Name</td>
+                                                <td>
+                                                    @i.Name
+                                                    @if (i.Detail is not null) { <div class="text-muted">@i.Detail</div> }
+                                                </td>
                                                 <td class="text-end text-nowrap">@(i.Amount?.ToString("C"))</td>
-                                                <td class="text-muted">@i.Change</td>
+                                                <td style="width:9.5rem">
+                                                    <select class="form-select form-select-sm" value="@choice"
+                                                            @onchange="e => SetChoice(i, e.Value?.ToString())">
+                                                        @foreach (var a in i.Actions)
+                                                        {
+                                                            <option value="@a">@a</option>
+                                                        }
+                                                    </select>
+                                                </td>
                                             </tr>
                                         }
                                     </tbody>
@@ -109,11 +125,10 @@ else
             <div class="form-check mb-2">
                 <input class="form-check-input" type="checkbox" id="chkCatchUp" @bind="_confirmed" />
                 <label class="form-check-label" for="chkCatchUp">
-                    I understand: @_preview.Count("Cash flow") pending cash-flow entr@(_preview.Count("Cash flow") == 1 ? "y" : "ies")
-                    before @_cutoff.ToString("MMM d") will be removed and overdue bills marked paid. This can’t be undone.
+                    I understand: @Summary(). This can’t be undone.
                 </label>
             </div>
-            <div class="small mb-2">Still owe something from before then? Leave it out by setting the date earlier, or handle that item first.</div>
+            <div class="small mb-2">Still owe something from before then? Open “Show all” and change it to Keep open / Keep.</div>
             <button class="btn btn-dark" disabled="@(!_confirmed || _busy)" @onclick="ApplyAsync">
                 @(_busy ? "Catching up…" : "Catch up")
             </button>
@@ -124,8 +139,8 @@ else
 @code {
     private static readonly (string Area, string What)[] Areas =
     [
-        ("Cash flow", "Pending entries dated before the cutoff are removed, the same as Skip."),
-        ("Open bills", "Overdue open bills are marked paid, so they close and their schedule moves on."),
+        ("Open bills", "Overdue open bills are marked paid, so they close and their schedule moves on. Their cash-flow entry goes with them."),
+        ("Cash flow", "Other pending entries dated before the cutoff are removed, the same as Skip."),
         ("Bill schedules", "Recurring bills stuck on an old due date move to their first date on or after the cutoff."),
         ("Income", "Next payday moves forward to the first one on or after the cutoff."),
         ("Sinking funds", "Due date moves forward by whole periods. Saved amounts are left as they are."),
@@ -141,6 +156,46 @@ else
     private CatchUpPreview? _preview;
     private CatchUpPreview? _applied;
     private List<BankAccount> _accounts = [];
+    private Dictionary<string, string> _choices = [];
+
+    private string ChoiceOf(CatchUpItem i) => _choices.TryGetValue(i.Key, out var c) ? c : i.DefaultAction;
+
+    private void SetChoice(CatchUpItem i, string? action)
+    {
+        if (action is null || action == i.DefaultAction) _choices.Remove(i.Key);
+        else _choices[i.Key] = action;
+        _confirmed = false;
+    }
+
+    /// <summary>"52 entries removed, 3 bills marked paid, 1 bill kept open…" for the current choices.</summary>
+    private string Summary()
+    {
+        var parts = _preview!.Items
+            .GroupBy(i => (i.Area, Action: ChoiceOf(i)))
+            .Where(g => g.Key.Action is not (CatchUpService.Keep or CatchUpService.KeepOpen or CatchUpService.KeepAsIs))
+            .Select(g => $"{g.Count()} {Noun(g.Key.Area, g.Count())} {Done(g.Key.Action)}")
+            .ToList();
+        var kept = _preview.Items.Count(i => ChoiceOf(i) is CatchUpService.Keep or CatchUpService.KeepOpen or CatchUpService.KeepAsIs);
+        if (kept > 0) parts.Add($"{kept} left as they are");
+        return parts.Count == 0 ? "nothing will change" : string.Join(", ", parts);
+    }
+
+    private static string Done(string action) => action switch
+    {
+        CatchUpService.MarkPaid    => "marked paid",
+        CatchUpService.Remove      => "removed",
+        CatchUpService.MoveForward => "moved forward",
+        _                          => action.ToLowerInvariant()
+    };
+
+    private static string Noun(string area, int n) => area switch
+    {
+        "Open bills"     => n == 1 ? "bill" : "bills",
+        "Cash flow"      => n == 1 ? "entry" : "entries",
+        "Bill schedules" => n == 1 ? "bill schedule" : "bill schedules",
+        "Income"         => n == 1 ? "income" : "incomes",
+        _                => n == 1 ? "sinking fund" : "sinking funds"
+    };
 
     protected override async Task OnInitializedAsync()
     {
@@ -157,13 +212,14 @@ else
     {
         if (_cutoff > _today) _cutoff = _today;
         _confirmed = false;
+        _choices = [];
         _preview = await CatchUpSvc.PreviewAsync(_userId, _cutoff);
     }
 
     private async Task ApplyAsync()
     {
         _busy = true;
-        _applied = await CatchUpSvc.ApplyAsync(_userId, _cutoff, _horizonMonths);
+        _applied = await CatchUpSvc.ApplyAsync(_userId, _cutoff, _horizonMonths, _choices);
         _accounts = (await AccountRepo.GetAllAsync(_userId)).ToList();
         _busy = false;
     }

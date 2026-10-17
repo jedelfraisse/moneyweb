@@ -272,14 +272,6 @@ public class CashFlowRepository(string connectionString) : ICashFlowRepository
             """, new { UserId = userId, Before = before });
     }
 
-    public async Task<int> DeletePendingBeforeAsync(int userId, DateOnly before)
-    {
-        using var conn = Connect();
-        return await conn.ExecuteAsync(
-            "DELETE FROM CashFlowTransactions WHERE UserId = @UserId AND IsProjected = 1 AND TransactionDate < @Before",
-            new { UserId = userId, Before = before });
-    }
-
     public async Task SetSubmittedForOccurrenceAsync(int billOccurrenceId, int userId, bool submitted, DateOnly? newDate = null)
     {
         using var conn = Connect();

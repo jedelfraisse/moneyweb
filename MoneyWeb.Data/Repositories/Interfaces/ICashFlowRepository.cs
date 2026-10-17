@@ -72,10 +72,6 @@ public interface ICashFlowRepository
     /// <summary>Every pending (not yet cleared/skipped) transaction dated before a cutoff, across all of the user's accounts.</summary>
     Task<IEnumerable<CashFlowTransaction>> GetPendingBeforeAsync(int userId, DateOnly before);
 
-    /// <summary>Delete every pending transaction dated before a cutoff, across all of the user's accounts (a bulk
-    /// "skip" — used by Catch Up). Returns the number removed.</summary>
-    Task<int> DeletePendingBeforeAsync(int userId, DateOnly before);
-
     /// <summary>Set or clear "submitted" on the pending payment linked to a bill occurrence (by BillOccurrenceId),
     /// optionally moving its date. Pins it as a manual override so regeneration leaves it alone.</summary>
     Task SetSubmittedForOccurrenceAsync(int billOccurrenceId, int userId, bool submitted, DateOnly? newDate = null);
