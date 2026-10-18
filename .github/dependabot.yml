@@ -12,6 +12,13 @@ updates:
       interval: "weekly"
       day: "monday"
     open-pull-requests-limit: 5
+    ignore:
+      # Pinned only to pick up security patches for transitive dependencies (see the .csproj comments); the parent
+      # packages (Aspire, SqlClient) are built against these major versions, so let them decide when to move majors.
+      - dependency-name: "MessagePack"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "System.Security.Cryptography.Pkcs"
+        update-types: ["version-update:semver-major"]
     groups:
       nuget-minor-and-patch:
         update-types: ["minor", "patch"]
