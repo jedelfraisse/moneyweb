@@ -42,7 +42,8 @@ public class CatchUpService(
     IDebtProjectionService debtProjection,
     ISinkingFundProjectionService fundProjection,
     IBillCashFlowSyncService billSync,
-    BillProjectionService billProjection) : ICatchUpService
+    BillProjectionService billProjection,
+    IBankAccountRepository accountRepo) : ICatchUpService
 {
     public const string Note = "Closed by Catch Up";
 
@@ -68,6 +69,9 @@ public class CatchUpService(
 
         var today = DateOnly.FromDateTime(DateTime.Today);
         var pending = (await cfRepo.GetPendingBeforeAsync(userId, cutoff)).ToList();
+        var accountNames = (await accountRepo.GetAllAsync(userId)).ToDictionary(a => a.Id, a => a.Name);
+        var autoDraftBillIds = (await billRepo.GetAllAsync(userId, activeOnly: false))
+            .Where(b => b.PaymentMethod == DebtPaymentMethod.AutoDraft).Select(b => b.Id).ToHashSet();
         var handledRows = new HashSet<int>();   // cash-flow rows already decided by their bill
 
         // 1. Overdue open bills. Each one carries its own pending payment(s) along with it, so keeping a bill open
@@ -85,8 +89,13 @@ public class CatchUpService(
                               .ToList();
             handledRows.UnionWith(rows.Select(r => r.Id));
 
+            var detail = string.Join(" · ", new[]
+            {
+                o.BillId is { } bid0 && autoDraftBillIds.Contains(bid0) ? "Auto-draft" : null,
+                rows.Count > 0 ? "with its cash-flow entry" : null
+            }.Where(d => d is not null));
             var item = new CatchUpItem($"bill:{o.Id}", "Open bills", o.DisplayName, payDate, o.ActualAmount ?? o.EstimatedAmount,
-                [MarkPaid, KeepOpen, Remove], rows.Count > 0 ? "with its cash-flow entry" : null);
+                [MarkPaid, KeepOpen, Remove], detail.Length > 0 ? detail : null);
             items.Add(item);
             if (!apply) continue;
 
@@ -139,7 +148,8 @@ public class CatchUpService(
         // 3. Remaining pending cash flow before the cutoff → removed (the same as Skip on the Transactions page).
         foreach (var t in pending.Where(t => !handledRows.Contains(t.Id)))
         {
-            var item = new CatchUpItem($"cf:{t.Id}", "Cash flow", t.Description, t.TransactionDate, t.Amount, [Remove, Keep]);
+            var item = new CatchUpItem($"cf:{t.Id}", "Cash flow", t.Description, t.TransactionDate, t.Amount, [Remove, Keep],
+                accountNames.TryGetValue(t.BankAccountId, out var acct) ? acct : "Account was deleted");
             items.Add(item);
             if (apply && Choice(item) == Remove)
                 await cfRepo.DeleteAsync(t.Id, userId);

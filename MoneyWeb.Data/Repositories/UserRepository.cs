@@ -77,6 +77,14 @@ public class UserRepository(string connectionString) : IUserRepository
             """, user);
     }
 
+    public async Task SetDashboardAccountAsync(int userId, int? bankAccountId)
+    {
+        using var conn = Connect();
+        await conn.ExecuteAsync(
+            "UPDATE Users SET DashboardAccountId = @AccountId WHERE Id = @Id",
+            new { Id = userId, AccountId = bankAccountId });
+    }
+
     public async Task DeleteUserDataAsync(int userId)
     {
         using var conn = Connect();

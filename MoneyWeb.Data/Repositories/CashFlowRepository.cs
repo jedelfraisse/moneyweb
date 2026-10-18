@@ -346,11 +346,12 @@ public class CashFlowRepository(string connectionString) : ICashFlowRepository
     /// count (CountOrphanedProjectedTransactionsAsync) can never drift from what actually gets deleted.</summary>
     private static string OrphanedProjectedTransactionsWhere => $"""
         cft.IsProjected = 1
-          AND cft.ReferenceId IS NOT NULL
           AND (
-            (cft.Category = {(int)TransactionCategory.DebtPayment} AND NOT EXISTS (SELECT 1 FROM Debts d WHERE d.Id = cft.ReferenceId))
+            (cft.ReferenceId IS NOT NULL AND cft.Category = {(int)TransactionCategory.DebtPayment} AND NOT EXISTS (SELECT 1 FROM Debts d WHERE d.Id = cft.ReferenceId))
             OR
-            (cft.Category = {(int)TransactionCategory.Bill} AND NOT EXISTS (SELECT 1 FROM Bills b WHERE b.Id = cft.ReferenceId))
+            (cft.ReferenceId IS NOT NULL AND cft.Category = {(int)TransactionCategory.Bill} AND NOT EXISTS (SELECT 1 FROM Bills b WHERE b.Id = cft.ReferenceId))
+            OR
+            NOT EXISTS (SELECT 1 FROM BankAccounts a WHERE a.Id = cft.BankAccountId)
           )
         """;
 }

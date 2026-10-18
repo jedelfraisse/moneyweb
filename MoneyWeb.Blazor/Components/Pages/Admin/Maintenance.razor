@@ -41,8 +41,8 @@ else
             <p class="card-text text-muted small">
                 Deleting a Debt or Bill removes its own upcoming transactions as part of the delete flow.
                 This sweeps up leftovers from deletes made <em>before</em> that cleanup existed — upcoming
-                (projected) transactions whose debt or bill no longer exists. Already-cleared transaction
-                history is never touched.
+                (projected) transactions whose debt or bill no longer exists, or that sit on a bank account that
+                was deleted. Already-cleared transaction history is never touched.
             </p>
 
             @if (_pendingCount is null)

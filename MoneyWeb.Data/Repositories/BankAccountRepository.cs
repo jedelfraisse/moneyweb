@@ -49,10 +49,26 @@ public class BankAccountRepository(string connectionString) : IBankAccountReposi
 
     public async Task DeleteAsync(int id, int userId)
     {
+        // Nothing in the schema ties these to the account, so a bare delete used to leave its cash-flow entries
+        // (invisible on every Transactions page, but still counted elsewhere) and dangling account links behind.
         using var conn = Connect();
-        await conn.ExecuteAsync(
-            "DELETE FROM BankAccounts WHERE Id = @Id AND UserId = @UserId",
-            new { Id = id, UserId = userId });
+        await conn.OpenAsync();
+        using var tx = conn.BeginTransaction();
+        var p = new { Id = id, UserId = userId };
+        if (await conn.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM BankAccounts WHERE Id = @Id AND UserId = @UserId", p, tx) == 0)
+            return;
+        await conn.ExecuteAsync("""
+            DELETE FROM CashFlowTransactions WHERE BankAccountId = @Id AND UserId = @UserId;
+            UPDATE Bills        SET BankAccountId = NULL WHERE BankAccountId = @Id AND UserId = @UserId;
+            UPDATE Debts        SET BankAccountId = NULL WHERE BankAccountId = @Id AND UserId = @UserId;
+            UPDATE DebtGroups   SET BankAccountId = NULL WHERE BankAccountId = @Id AND UserId = @UserId;
+            UPDATE Income       SET BankAccountId = NULL WHERE BankAccountId = @Id AND UserId = @UserId;
+            UPDATE SinkingFunds SET BankAccountId = NULL WHERE BankAccountId = @Id AND UserId = @UserId;
+            UPDATE SinkingFunds SET FundingAccountId = NULL WHERE FundingAccountId = @Id AND UserId = @UserId;
+            UPDATE Users        SET DashboardAccountId = NULL WHERE Id = @UserId AND DashboardAccountId = @Id;
+            DELETE FROM BankAccounts WHERE Id = @Id AND UserId = @UserId;
+            """, p, tx);
+        tx.Commit();
     }
 
     public async Task<IEnumerable<BankAccount>> GetSharedWithMeAsync(int userId)

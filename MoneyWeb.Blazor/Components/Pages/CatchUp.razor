@@ -70,31 +70,45 @@ else
     }
     else
     {
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-2 small">
+            <span class="text-muted">Sections to catch up:</span>
+            <button class="btn btn-sm btn-outline-secondary py-0" @onclick="IncludeAll">All</button>
+            <button class="btn btn-sm btn-outline-secondary py-0" @onclick="IncludeNone">None</button>
+        </div>
         <div class="row g-3 mb-3">
             @foreach (var (area, what) in Areas)
             {
                 var n = _preview.Count(area);
                 if (n == 0) continue;
+                var included = !_excluded.Contains(area);
+                var switchId = $"inc-{area.Replace(" ", "")}";
                 <div class="col-md-6">
-                    <div class="card h-100">
+                    <div class="card h-100 @(included ? "" : "bg-light")">
                         <div class="card-body">
-                            @{ var changed = _preview.Items.Count(i => i.Area == area && ChoiceOf(i) != i.DefaultAction); }
+                            @{ var changed = included ? _preview.Items.Count(i => i.Area == area && ChoiceOf(i) != i.DefaultAction) : 0; }
                             <div class="d-flex justify-content-between align-items-baseline">
-                                <h6 class="mb-1">@area</h6>
+                                <div class="form-check form-switch mb-1">
+                                    <input class="form-check-input" type="checkbox" id="@switchId" checked="@included"
+                                           @onchange="e => SetIncluded(area, e.Value is true)" />
+                                    <label class="form-check-label h6 mb-0" for="@switchId">@area</label>
+                                </div>
                                 <span>
+                                    @if (!included) { <span class="badge bg-light text-muted border me-1">Skipped</span> }
                                     @if (changed > 0) { <span class="badge bg-info text-dark me-1">@changed changed</span> }
                                     <span class="badge bg-secondary">@n</span>
                                 </span>
                             </div>
-                            <div class="text-muted small mb-2">@what</div>
-                            <details>
+                            <div class="text-muted small mb-2 @(included ? "" : "opacity-50")">
+                                @(included ? what : "Left as it is — turn on to include this section.")
+                            </div>
+                            <details class="@(included ? "" : "opacity-50")">
                                 <summary class="small">Show @(n == 1 ? "it" : $"all {n}") · change what happens to each</summary>
                                 <table class="table table-sm small mt-2 mb-0">
                                     <tbody>
                                         @foreach (var i in _preview.Items.Where(i => i.Area == area))
                                         {
                                             var choice = ChoiceOf(i);
-                                            <tr class="@(choice != i.DefaultAction ? "table-info" : "")">
+                                            <tr class="@(included && choice != i.DefaultAction ? "table-info" : "")">
                                                 <td class="text-nowrap">@i.Date.ToString("MMM d, yyyy")</td>
                                                 <td>
                                                     @i.Name
@@ -102,7 +116,7 @@ else
                                                 </td>
                                                 <td class="text-end text-nowrap">@(i.Amount?.ToString("C"))</td>
                                                 <td style="width:9.5rem">
-                                                    <select class="form-select form-select-sm" value="@choice"
+                                                    <select class="form-select form-select-sm" value="@choice" disabled="@(!included)"
                                                             @onchange="e => SetChoice(i, e.Value?.ToString())">
                                                         @foreach (var a in i.Actions)
                                                         {
@@ -129,7 +143,7 @@ else
                 </label>
             </div>
             <div class="small mb-2">Still owe something from before then? Open “Show all” and change it to Keep open / Keep.</div>
-            <button class="btn btn-dark" disabled="@(!_confirmed || _busy)" @onclick="ApplyAsync">
+            <button class="btn btn-dark" disabled="@(!_confirmed || _busy || _preview.Items.All(i => ChoiceOf(i) == LeaveAsIs(i)))" @onclick="ApplyAsync">
                 @(_busy ? "Catching up…" : "Catch up")
             </button>
         </div>
@@ -158,7 +172,28 @@ else
     private List<BankAccount> _accounts = [];
     private Dictionary<string, string> _choices = [];
 
-    private string ChoiceOf(CatchUpItem i) => _choices.TryGetValue(i.Key, out var c) ? c : i.DefaultAction;
+    private HashSet<string> _excluded = [];
+
+    private string ChoiceOf(CatchUpItem i) =>
+        _excluded.Contains(i.Area) ? LeaveAsIs(i)
+        : _choices.TryGetValue(i.Key, out var c) ? c : i.DefaultAction;
+
+    /// <summary>The action that leaves an item untouched (Keep / Keep open / Keep as is).</summary>
+    private static string LeaveAsIs(CatchUpItem i) =>
+        i.Actions.First(a => a is CatchUpService.Keep or CatchUpService.KeepOpen or CatchUpService.KeepAsIs);
+
+    private void SetIncluded(string area, bool include)
+    {
+        if (include) _excluded.Remove(area); else _excluded.Add(area);
+        _confirmed = false;
+    }
+
+    private void IncludeAll() { _excluded.Clear(); _confirmed = false; }
+    private void IncludeNone() { _excluded = [.. Areas.Select(a => a.Area)]; _confirmed = false; }
+
+    /// <summary>Per-item choices plus "leave it" for every item in a section that's switched off.</summary>
+    private Dictionary<string, string> EffectiveChoices() =>
+        _preview!.Items.ToDictionary(i => i.Key, ChoiceOf);
 
     private void SetChoice(CatchUpItem i, string? action)
     {
@@ -219,7 +254,7 @@ else
     private async Task ApplyAsync()
     {
         _busy = true;
-        _applied = await CatchUpSvc.ApplyAsync(_userId, _cutoff, _horizonMonths, _choices);
+        _applied = await CatchUpSvc.ApplyAsync(_userId, _cutoff, _horizonMonths, EffectiveChoices());
         _accounts = (await AccountRepo.GetAllAsync(_userId)).ToList();
         _busy = false;
     }

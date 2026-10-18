@@ -11,5 +11,7 @@ public interface IUserRepository
     Task<IEnumerable<User>> GetAllAsync();
     Task<int> CreateAsync(User user);
     Task UpdateAsync(User user);
+    /// <summary>Set (or clear) the account the dashboard's daily balance chart opens on.</summary>
+    Task SetDashboardAccountAsync(int userId, int? bankAccountId);
     Task DeleteUserDataAsync(int userId);  // deletes all domain rows + user row
 }

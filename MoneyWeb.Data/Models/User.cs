@@ -13,6 +13,7 @@ public class User
     public string RequestReason { get; set; } = string.Empty;
     public bool IsAdmin { get; set; }
     public int CashFlowHorizonMonths { get; set; } = 12;
+    public int? DashboardAccountId { get; set; }   // account the dashboard balance chart opens on
     public bool ShowSinkingFunds { get; set; } = true;
     public bool ShowLoans { get; set; } = true;
     public bool ShowFamily { get; set; } = false;
