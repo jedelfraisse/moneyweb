@@ -262,6 +262,16 @@ public class CashFlowRepository(string connectionString) : ICashFlowRepository
             """, new { ReferenceId = referenceId, UserId = userId, Category = (int)category, Date = date });
     }
 
+    public async Task<IEnumerable<CashFlowTransaction>> GetPendingBeforeAsync(int userId, DateOnly before)
+    {
+        using var conn = Connect();
+        return await conn.QueryAsync<CashFlowTransaction>("""
+            SELECT * FROM CashFlowTransactions
+            WHERE UserId = @UserId AND IsProjected = 1 AND TransactionDate < @Before
+            ORDER BY TransactionDate, Id
+            """, new { UserId = userId, Before = before });
+    }
+
     public async Task SetSubmittedForOccurrenceAsync(int billOccurrenceId, int userId, bool submitted, DateOnly? newDate = null)
     {
         using var conn = Connect();

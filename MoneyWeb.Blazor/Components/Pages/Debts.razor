@@ -706,12 +706,36 @@ else
                                @onchange="e => { if (decimal.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var r)) _editingDebt.InterestRate = r / 100m; }" />
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">Minimum Payment</label>
-                        <input class="form-control" type="number" step="0.01" @bind="_editingDebt.MinimumPayment" />
+                        @{ var feesInPayment = MonthlyFeesInPayment; }
+                        <label class="form-label">
+                            @(feesInPayment > 0 ? "Total monthly payment" : "Minimum payment")
+                            <span class="text-muted small">(the amount on your statement)</span>
+                        </label>
+                        <input class="form-control" type="number" step="0.01" @bind="_statementTotal" @bind:after="SyncPrincipalAndInterest" />
+                        @if (feesInPayment > 0)
+                        {
+                            <div class="border rounded p-2 mt-2 small">
+                                <div class="d-flex justify-content-between">
+                                    <span>Escrow &amp; fees <span class="text-muted">(set under Fees below)</span></span>
+                                    <span>−@feesInPayment.ToString("C")</span>
+                                </div>
+                                <div class="d-flex justify-content-between fw-semibold">
+                                    <span>Principal &amp; interest <span class="text-muted fw-normal">(reduces your balance)</span></span>
+                                    <span class="@(_editingDebt.MinimumPayment < 0 ? "text-danger" : "")">@_editingDebt.MinimumPayment.ToString("C")</span>
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="form-text">
+                                Part of it escrow (property tax, insurance, PMI)? Add those under <strong>Fees</strong> below; the principal &amp;
+                                interest is worked out from this total.
+                            </div>
+                        }
                         @if (_editingDebt.Balance > 0)
                         {
                             <div class="border rounded p-2 mt-2 mb-0 @(_editingDebt.IsMinBelowInterest ? (_editingDebt.HasActivePromo(_today) ? "border-warning" : "border-danger") : "")">
-                                <div class="small text-muted mb-1">Of this payment, next cycle:</div>
+                                <div class="small text-muted mb-1">Of the @(feesInPayment > 0 ? "principal & interest" : "payment"), next cycle:</div>
                                 <div class="d-flex justify-content-between small">
                                     <span>Interest</span>
                                     <span class="text-danger">@_editingDebt.MonthlyInterest.ToString("C")</span>
@@ -883,8 +907,8 @@ else
                                             <option value="@DebtFeeCategory.Other">Other</option>
                                         </select>
                                         <input class="form-control form-control-sm text-end" style="max-width:7rem" type="number" step="0.01"
-                                               @bind="fee.Amount" @bind:after="() => SyncFeeToFundAsync(fee)" />
-                                        <select class="form-select form-select-sm" style="max-width:8rem" @bind="fee.Frequency" @bind:after="() => SyncFeeToFundAsync(fee)">
+                                               @bind="fee.Amount" @bind:after="() => FeeChangedAsync(fee)" />
+                                        <select class="form-select form-select-sm" style="max-width:8rem" @bind="fee.Frequency" @bind:after="() => FeeChangedAsync(fee)">
                                             <option value="@DebtFeeFrequency.Monthly">Monthly</option>
                                             <option value="@DebtFeeFrequency.Quarterly">Quarterly</option>
                                             <option value="@DebtFeeFrequency.Yearly">Yearly</option>
@@ -910,7 +934,7 @@ else
                                                    placeholder="Day" @bind="fee.DueDay" @bind:after="() => SyncFeeToFundAsync(fee)" />
                                         }
                                         <div class="form-check ms-auto mb-0 text-nowrap">
-                                            <input type="checkbox" class="form-check-input" id="feeActive-@fee.GetHashCode()" @bind="fee.IsActive" />
+                                            <input type="checkbox" class="form-check-input" id="feeActive-@fee.GetHashCode()" @bind="fee.IsActive" @bind:after="SyncPrincipalAndInterest" />
                                             <label class="form-check-label small" for="feeActive-@fee.GetHashCode()">Active</label>
                                         </div>
                                         @if (ReferenceEquals(_confirmingFeeRemoval, fee))
@@ -1005,10 +1029,13 @@ else
                                 <button class="btn btn-sm btn-outline-success" @onclick="AddFeeToList">+ Add Fee</button>
                             </div>
                         </div>
-                        <div class="text-end text-muted small mt-1">
-                            @{ var editingTotalPmt = _editingDebt.MinimumPayment + _editingFees.Where(f => f.IsActive).Sum(f => f.MonthlyEquivalent); }
-                            Total monthly payment (min + fees, averaged for non-monthly ones): <strong>@editingTotalPmt.ToString("C")</strong>
-                        </div>
+                        @if (_editingFees.Any(f => f.IsActive && f.Frequency != DebtFeeFrequency.Monthly))
+                        {
+                            <div class="text-end text-muted small mt-1">
+                                @{ var editingTotalPmt = _editingDebt.MinimumPayment + _editingFees.Where(f => f.IsActive).Sum(f => f.MonthlyEquivalent); }
+                                Average monthly cost (yearly/quarterly fees spread across the year): <strong>@editingTotalPmt.ToString("C")</strong>
+                            </div>
+                        }
                     </div>
                     @* ── Sharing section ── *@
                     @if (_editingDebt.Id > 0)
@@ -1287,6 +1314,19 @@ else
     }
     private int? _originalDebtGroupId;
     private List<DebtFee> _editingFees = [];
+
+    // The form takes the payment total from the statement; principal & interest (what's stored as
+    // MinimumPayment and drives payoff math) is that total minus the monthly fees collected with it.
+    private decimal _statementTotal;
+    private decimal MonthlyFeesInPayment =>
+        _editingFees.Where(f => f.IsActive && f.Frequency == DebtFeeFrequency.Monthly).Sum(f => f.Amount);
+    private void SyncPrincipalAndInterest() => _editingDebt.MinimumPayment = _statementTotal - MonthlyFeesInPayment;
+
+    private async Task FeeChangedAsync(DebtFee fee)
+    {
+        SyncPrincipalAndInterest();
+        await SyncFeeToFundAsync(fee);
+    }
     private List<int> _deletedFeeIds = [];
     private string _newFeeName = string.Empty;
     private decimal _newFeeAmount;
@@ -1470,6 +1510,7 @@ else
         _debtError = null;
         _showDebtModal = true;
         _editingFees = [];
+        _statementTotal = 0;
         _deletedFeeIds = [];
         _newFeeName = string.Empty;
         _newFeeAmount = 0;
@@ -1513,6 +1554,7 @@ else
             Frequency = f.Frequency, DueDay = f.DueDay, DueMonth = f.DueMonth,
             SinkingFundId = f.SinkingFundId
         }).ToList();
+        _statementTotal = d.MinimumPayment + MonthlyFeesInPayment;
         _deletedFeeIds = [];
         _newFeeName = string.Empty;
         _newFeeAmount = 0;
@@ -1532,6 +1574,8 @@ else
     private async Task SaveDebt()
     {
         if (string.IsNullOrWhiteSpace(_editingDebt.Name)) { _debtError = "Name is required."; return; }
+        SyncPrincipalAndInterest();
+        if (_editingDebt.MinimumPayment < 0) { _debtError = "The monthly fees are more than the total payment. Check the total and the fee amounts."; return; }
         if (_editingDebt.Balance < 0) { _debtError = "Balance cannot be negative."; return; }
         if ((_editingDebt.DebtType == DebtType.CreditCard || _editingDebt.DebtType == DebtType.LineOfCredit)
             && (_editingDebt.CreditLimit is null || _editingDebt.CreditLimit <= 0))
@@ -1673,6 +1717,7 @@ else
         _newFeeName = string.Empty;
         _newFeeAmount = 0;
         _newFeeCategory = DebtFeeCategory.Other;
+        SyncPrincipalAndInterest();
     }
 
     /// <summary>Delete-button entry point — if the fee has a linked Sinking Fund, ask what should
@@ -1691,6 +1736,7 @@ else
         if (fee.Id > 0)
             _deletedFeeIds.Add(fee.Id);
         _confirmingFeeRemoval = null;
+        SyncPrincipalAndInterest();
     }
 
     private async Task RemoveFeeAndDeleteFund(DebtFee fee)
