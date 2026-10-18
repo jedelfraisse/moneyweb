@@ -122,7 +122,9 @@ Before production use, a bank-data provider must:
 ## 12. Change and vulnerability management
 
 - All changes are tracked in source control and deployed only through the automated pipeline from the `release` branch, after being tested.
-- Automated dependency alerts and updates (Dependabot), code scanning (CodeQL) and secret scanning run on the repository. Critical and high-severity findings are addressed promptly.
+- Automated dependency alerts and updates (Dependabot), code scanning (CodeQL) and secret scanning with push protection run on the repository.
+- Security alerts and Dependabot pull requests are reviewed at least weekly. Target fix times: **critical/high within 7 days**, **moderate within 30 days**, low at the next routine update. A finding that can't be fixed in time (e.g. no patched version yet) is recorded in the risk assessment with its mitigation.
+- Build warnings about vulnerable packages are treated as findings, not noise; transitive packages are pinned to a patched version when the parent package hasn't caught up.
 - Hosting, framework and runtime updates are applied on a regular schedule.
 - Security-relevant events are logged with who did what and when: sign-ins, approvals, sharing changes, data exports, account deletion and bank connections.
 - Vulnerability reports can be sent to support@delfraisse.com.

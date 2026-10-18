@@ -56,7 +56,7 @@ public class SmtpEmailSender(IConfiguration config, ILogger<SmtpEmailSender> log
             sw.Stop();
 
             logger.LogInformation("Sent login email to {Email} via SMTP {Host}:{Port} (auth: {Auth}, ssl: {Ssl}) in {ElapsedMs}ms",
-                toEmail, host, port, !string.IsNullOrWhiteSpace(username), enableSsl, sw.ElapsedMilliseconds);
+                LogSafe.Email(toEmail), host, port, !string.IsNullOrWhiteSpace(username), enableSsl, sw.ElapsedMilliseconds);
             diagnostics.Record(new EmailSendAttempt(toEmail, host, port, true, null, sw.ElapsedMilliseconds, DateTime.UtcNow));
         }
         catch (Exception ex)
@@ -64,7 +64,7 @@ public class SmtpEmailSender(IConfiguration config, ILogger<SmtpEmailSender> log
             sw.Stop();
             var errorText = $"[{step}] {ex.GetType().Name}: {ex.Message}";
             logger.LogError(ex, "Failed to send login email to {Email} via SMTP {Host}:{Port} at step '{Step}' after {ElapsedMs}ms",
-                toEmail, host, port, step, sw.ElapsedMilliseconds);
+                LogSafe.Email(toEmail), host, port, step, sw.ElapsedMilliseconds);
             diagnostics.Record(new EmailSendAttempt(toEmail, host, port, false, errorText, sw.ElapsedMilliseconds, DateTime.UtcNow));
             throw;
         }

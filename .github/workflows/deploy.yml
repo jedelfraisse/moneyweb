@@ -5,6 +5,10 @@ on:
     branches: [ release ]
   workflow_dispatch:  # allow manual runs from GitHub UI
 
+# The job only reads the repo; deployment uses FTP secrets, not the GitHub token.
+permissions:
+  contents: read
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
