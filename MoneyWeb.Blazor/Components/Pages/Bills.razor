@@ -71,7 +71,10 @@ else
         : (b => (object)b.UpcomingDueDate(today0));
     var manualBills    = _bills.Where(b => b.PaymentMethod != DebtPaymentMethod.AutoDraft).OrderBy(billSortKey).ToList();
     var autoDraftBills = _bills.Where(b => b.PaymentMethod == DebtPaymentMethod.AutoDraft).OrderBy(billSortKey).ToList();
-    var openManual     = _openOccurrences.Where(o => o.IsOneOff || _bills.Any(b => b.Id == o.BillId && b.PaymentMethod != DebtPaymentMethod.AutoDraft)).ToList();
+    // All open occurrences, auto-draft bills' included: one recorded with Record Amount stays open until its payment
+    // clears, and hiding it here left it invisible everywhere but Catch Up.
+    var openManual     = _openOccurrences.ToList();
+    var autoDraftIds   = autoDraftBills.Select(b => b.Id).ToHashSet();
 
     @* ── Open Bills ── *@
     <div class="d-flex justify-content-between align-items-center mt-2 mb-2">
@@ -110,6 +113,7 @@ else
                             <td class="fw-semibold">
                                 @occ.DisplayName
                                 @if (occ.IsOneOff) { <span class="badge bg-secondary ms-1 small">One-Off</span> }
+                                @if (occ.BillId is { } obid && autoDraftIds.Contains(obid)) { <span class="badge bg-info-subtle text-info-emphasis ms-1 small" title="Auto-draft bill: ✓ Confirm once the draft has gone through">Auto-draft</span> }
                                 @if (occ.SinkingFundId.HasValue) { <span class="badge bg-info-subtle text-info-emphasis ms-1 small" title="A sinking fund saved for this bill">Sinking fund</span> }
                                 @if (_openMissingCashFlow.Contains(occ.Id))
                                 {

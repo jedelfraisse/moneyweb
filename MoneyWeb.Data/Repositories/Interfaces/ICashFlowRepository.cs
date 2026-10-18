@@ -99,8 +99,8 @@ public interface ICashFlowRepository
     Task DetachSourceKeepAsManualAsync(int referenceId, int userId, TransactionCategory category);
 
     /// <summary>
-    /// Admin maintenance: deletes still-upcoming (IsProjected) DebtPayment/Bill transactions whose
-    /// ReferenceId no longer matches any existing Debt/Bill — leftovers from deletes made before both
+    /// Admin maintenance: deletes still-upcoming (IsProjected) transactions on a bank account that no longer exists, and
+    /// DebtPayment/Bill transactions whose ReferenceId no longer matches any existing Debt/Bill — leftovers from deletes made before both
     /// pages started resolving their cash-flow rows at delete time. Historical (cleared) rows are left
     /// alone. Returns the number of rows removed.
     /// </summary>

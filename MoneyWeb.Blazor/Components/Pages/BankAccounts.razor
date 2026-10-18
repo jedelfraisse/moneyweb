@@ -144,7 +144,10 @@ else
                 <div class="modal-header"><h5 class="modal-title">Delete Account</h5></div>
                 <div class="modal-body">
                     <p>Delete <strong>@_deleteTarget.Name</strong>? This cannot be undone.</p>
-                    <p class="text-muted small">Any debt groups linked to this account will become unlinked.</p>
+                    <p class="text-muted small">
+                        Its cash-flow entries are deleted too. Bills, debts, debt groups, income and sinking funds that use this
+                        account stay, but are unlinked from it — pick a new account for them so they show up in cash flow again.
+                    </p>
                 </div>
                 <div class="modal-footer">
                     <button class="btn btn-secondary" @onclick="() => _deleteTarget = null">Cancel</button>
