@@ -1,0 +1,26 @@
+# Dependabot version updates (security updates are enabled separately in the repo settings and run regardless).
+# Minor/patch bumps are grouped into one PR per ecosystem per week to keep the noise down; majors come individually.
+version: 2
+updates:
+  - package-ecosystem: "nuget"
+    directories:
+      - "/MoneyWeb.Blazor"
+      - "/MoneyWeb.Data"
+      - "/MoneyWeb.ServiceDefaults"
+      - "/MoneyWeb.AppHost"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    groups:
+      nuget-minor-and-patch:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    groups:
+      actions-minor-and-patch:
+        update-types: ["minor", "patch"]
