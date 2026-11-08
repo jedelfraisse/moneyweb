@@ -283,6 +283,22 @@ public class CashFlowRepository(string connectionString) : ICashFlowRepository
             """, new { OccId = billOccurrenceId, UserId = userId, Submitted = submitted, NewDate = newDate });
     }
 
+    public async Task MoveOccurrencePaymentAsync(int billOccurrenceId, int? billId, int userId, DateOnly oldPayDate,
+        DateOnly newPayDate, decimal? newPaymentAmount)
+    {
+        using var conn = Connect();
+        await conn.ExecuteAsync($"""
+            UPDATE CashFlowTransactions
+            SET TransactionDate = @NewDate, Amount = COALESCE(-CAST(@PaymentAmount AS decimal(18, 2)), Amount),
+                IsManualOverride = 1, UpdatedAt = GETUTCDATE()
+            WHERE UserId = @UserId AND IsProjected = 1 AND Category = {(int)TransactionCategory.Bill}
+              AND (BillOccurrenceId = @OccId
+                   OR (@BillId IS NOT NULL AND BillOccurrenceId IS NULL AND ReferenceId = @BillId
+                       AND IsManualOverride = 1 AND TransactionDate = @OldDate))
+            """, new { OccId = billOccurrenceId, BillId = billId, UserId = userId, OldDate = oldPayDate,
+                       NewDate = newPayDate, PaymentAmount = newPaymentAmount });
+    }
+
     public async Task DeleteForOccurrenceAsync(int billOccurrenceId, int userId)
     {
         using var conn = Connect();
