@@ -3,4 +3,5 @@
   <Project Path="MoneyWeb.Blazor/MoneyWeb.Blazor.csproj" />
   <Project Path="MoneyWeb.Data/MoneyWeb.Data.csproj" />
   <Project Path="MoneyWeb.ServiceDefaults/MoneyWeb.ServiceDefaults.csproj" />
+  <Project Path="MoneyWeb.Tests/MoneyWeb.Tests.csproj" />
 </Solution>

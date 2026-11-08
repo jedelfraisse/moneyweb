@@ -38,17 +38,28 @@ public class Bill
 
     /// <summary>
     /// Returns the "from" date to use when projecting the NEXT occurrence after one has been recorded.
-    /// If the canonical scheduled occurrence falls within 1 day of lastDueDate (meaning the user just
-    /// handled that period's bill), we advance past it so projections don't repeat the same period.
-    /// Example: monthly-on-15 bill, user enters April 14 → canonical = April 15 → returns April 16 → next = May 15.
+    /// If the canonical scheduled occurrence falls within half a period after the recorded due date (meaning the
+    /// user recorded that period's bill early), we advance past it so projections don't repeat the same period.
+    /// Example: monthly-on-16 bill, user enters Nov 13 → canonical = Nov 16 → returns Nov 17 → next = Dec 16.
     /// </summary>
     public DateOnly NextFromAfterOccurrence(DateOnly occurrenceDueDate)
     {
         var canonical = NextDueDate(occurrenceDueDate);
-        return canonical <= occurrenceDueDate.AddDays(1)
+        return canonical <= occurrenceDueDate.AddDays(HalfPeriodDays)
             ? canonical.AddDays(1)
             : occurrenceDueDate.AddDays(1);
     }
+
+    /// <summary>
+    /// How far a recorded date may sit from a scheduled date and still count as that period's bill.
+    /// Shared with the cash-flow sync so both agree on which period an entry belongs to.
+    /// </summary>
+    public int HalfPeriodDays => Frequency switch
+    {
+        BillFrequency.Weekly   => 3,
+        BillFrequency.BiWeekly => 7,
+        _                      => 15
+    };
 
     /// <summary>
     /// The next due date to show for this bill: the period after its last recorded occurrence. For auto-draft

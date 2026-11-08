@@ -79,6 +79,15 @@ public interface ICashFlowRepository
     /// <summary>Delete the pending payment(s) linked to a bill occurrence (by BillOccurrenceId).</summary>
     Task DeleteForOccurrenceAsync(int billOccurrenceId, int userId);
 
+    /// <summary>
+    /// A bill occurrence was edited: move its pending payment to the new pay date and, when given, set its amount
+    /// (a positive payment amount; stored as an outflow). Finds the payment by BillOccurrenceId, or for older rows by
+    /// bill + the occurrence's previous pay date. Without this the payment is left on the old date, the occurrence
+    /// shows "Not in cash flow", and adding it again duplicates it.
+    /// </summary>
+    Task MoveOccurrencePaymentAsync(int billOccurrenceId, int? billId, int userId, DateOnly oldPayDate, DateOnly newPayDate,
+        decimal? newPaymentAmount);
+
     /// <summary>Mark a bill occurrence's CF transaction as submitted (awaiting clearance), matched by
     /// source+date rather than by ID. Does not move the transaction's date — "submitted" is a status,
     /// not a reschedule; the payment still lands on its planned date.</summary>

@@ -23,7 +23,7 @@ public class DevEmailSender(ILogger<DevEmailSender> logger, DevMailbox mailbox, 
 
         logger.LogWarning(
             "==== DEV EMAIL (no real provider configured) ====\nTo: {Email}\nCode: {Code}\nMagic link: {Link}\n===================================================",
-            LogSafe.Text(toEmail), code, magicLinkUrl);
+            LogSafe.Text(toEmail), LogSafe.Text(code), LogSafe.Text(magicLinkUrl));   // link's host comes from the request
         mailbox.Add(new DevSentEmail(toEmail, magicLinkUrl, code, DateTime.UtcNow));
         diagnostics.Record(new EmailSendAttempt(toEmail, "(dev capture — no SMTP)", 0, true, null, 0, DateTime.UtcNow));
         return Task.CompletedTask;
