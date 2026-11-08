@@ -192,18 +192,19 @@ public class BillRepository(string connectionString) : IBillRepository
             new { BillId = billId, UserId = userId, PayDate = payDate });
     }
 
-    public async Task UpdateOccurrenceStatusByBillAndPayDateAsync(int billId, int userId, DateOnly payDate, BillOccurrenceStatus status, DateOnly? submittedDate, DateOnly? newPlannedPayDate = null)
+    public async Task UpdateOccurrenceStatusByBillAndPayDateAsync(int billId, int userId, DateOnly payDate, BillOccurrenceStatus status, DateOnly? submittedDate, DateOnly? newPlannedPayDate = null, decimal? actualAmount = null)
     {
         using var conn = Connect();
         await conn.ExecuteAsync(
             """
             UPDATE BillOccurrences SET
                 Status = @Status, SubmittedDate = @SubmittedDate,
-                PlannedPayDate = COALESCE(@NewPlannedPayDate, PlannedPayDate), UpdatedAt = GETUTCDATE()
+                PlannedPayDate = COALESCE(@NewPlannedPayDate, PlannedPayDate),
+                ActualAmount = COALESCE(CAST(@ActualAmount AS decimal(18, 2)), ActualAmount), UpdatedAt = GETUTCDATE()
             WHERE BillId = @BillId AND UserId = @UserId
               AND (PlannedPayDate = @PayDate OR (PlannedPayDate IS NULL AND DueDate = @PayDate))
             """,
-            new { BillId = billId, UserId = userId, PayDate = payDate, Status = status, SubmittedDate = submittedDate, NewPlannedPayDate = newPlannedPayDate });
+            new { BillId = billId, UserId = userId, PayDate = payDate, Status = status, SubmittedDate = submittedDate, NewPlannedPayDate = newPlannedPayDate, ActualAmount = actualAmount });
     }
 
     public async Task ConfirmPaymentByBillAndPayDateAsync(int billId, int userId, DateOnly payDate, decimal amount)

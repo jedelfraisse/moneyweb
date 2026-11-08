@@ -122,14 +122,15 @@ public class CashFlowRepository(string connectionString) : ICashFlowRepository
             """, new { Id = id, UserId = userId, Date = newDate });
     }
 
-    public async Task MarkAsSubmittedAsync(int id, int userId, DateOnly expectedPayDate)
+    public async Task MarkAsSubmittedAsync(int id, int userId, DateOnly expectedPayDate, decimal? newAmount = null)
     {
         using var conn = Connect();
         await conn.ExecuteAsync("""
             UPDATE CashFlowTransactions
-            SET IsSubmitted = 1, TransactionDate = @Date, IsManualOverride = 1, UpdatedAt = GETUTCDATE()
+            SET IsSubmitted = 1, TransactionDate = @Date, IsManualOverride = 1,
+                Amount = COALESCE(CAST(@Amount AS decimal(18, 2)), Amount), UpdatedAt = GETUTCDATE()
             WHERE Id = @Id AND UserId = @UserId
-            """, new { Id = id, UserId = userId, Date = expectedPayDate });
+            """, new { Id = id, UserId = userId, Date = expectedPayDate, Amount = newAmount });
     }
 
     public async Task MarkAsUnsubmittedAsync(int id, int userId)
@@ -272,15 +273,18 @@ public class CashFlowRepository(string connectionString) : ICashFlowRepository
             """, new { UserId = userId, Before = before });
     }
 
-    public async Task SetSubmittedForOccurrenceAsync(int billOccurrenceId, int userId, bool submitted, DateOnly? newDate = null)
+    public async Task SetSubmittedForOccurrenceAsync(int billOccurrenceId, int userId, bool submitted, DateOnly? newDate = null,
+        decimal? newPaymentAmount = null)
     {
         using var conn = Connect();
         await conn.ExecuteAsync("""
             UPDATE CashFlowTransactions
             SET IsSubmitted = @Submitted, IsManualOverride = 1,
-                TransactionDate = COALESCE(@NewDate, TransactionDate), UpdatedAt = GETUTCDATE()
+                TransactionDate = COALESCE(@NewDate, TransactionDate),
+                Amount = COALESCE(-CAST(@PaymentAmount AS decimal(18, 2)), Amount), UpdatedAt = GETUTCDATE()
             WHERE BillOccurrenceId = @OccId AND UserId = @UserId AND IsProjected = 1
-            """, new { OccId = billOccurrenceId, UserId = userId, Submitted = submitted, NewDate = newDate });
+            """, new { OccId = billOccurrenceId, UserId = userId, Submitted = submitted, NewDate = newDate,
+                       PaymentAmount = newPaymentAmount });
     }
 
     public async Task MoveOccurrencePaymentAsync(int billOccurrenceId, int? billId, int userId, DateOnly oldPayDate,
@@ -307,16 +311,18 @@ public class CashFlowRepository(string connectionString) : ICashFlowRepository
             new { OccId = billOccurrenceId, UserId = userId });
     }
 
-    public async Task MarkSubmittedForSourceOnDateAsync(int referenceId, int userId, TransactionCategory category, DateOnly date)
+    public async Task MarkSubmittedForSourceOnDateAsync(int referenceId, int userId, TransactionCategory category, DateOnly date,
+        decimal? newPaymentAmount = null)
     {
         using var conn = Connect();
         await conn.ExecuteAsync("""
             UPDATE CashFlowTransactions
-            SET IsSubmitted = 1, UpdatedAt = GETUTCDATE()
+            SET IsSubmitted = 1, Amount = COALESCE(-CAST(@PaymentAmount AS decimal(18, 2)), Amount), UpdatedAt = GETUTCDATE()
             WHERE ReferenceId = @ReferenceId AND UserId = @UserId
               AND Category = @Category AND IsManualOverride = 1 AND IsProjected = 1
               AND TransactionDate = @Date
-            """, new { ReferenceId = referenceId, UserId = userId, Category = (int)category, Date = date });
+            """, new { ReferenceId = referenceId, UserId = userId, Category = (int)category, Date = date,
+                       PaymentAmount = newPaymentAmount });
     }
 
     public async Task DeleteAllProjectedForSourceAsync(int referenceId, int userId, TransactionCategory category)

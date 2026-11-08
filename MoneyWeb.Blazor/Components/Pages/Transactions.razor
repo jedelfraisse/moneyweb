@@ -197,9 +197,13 @@ else
                                 <td>@SourceLink(t)</td>
                                 <td class="text-end fw-semibold @(t.Amount >= 0 ? "text-success" : "text-danger")">
                                     @t.Amount.ToString("C")
-                                    @if (t.IsProjected && t.Category == TransactionCategory.Bill)
+                                    @if (t.IsProjected && t.Category == TransactionCategory.Bill && t.IsSubmitted)
                                     {
-                                        <span class="ms-1 text-muted small" title="Estimated amount — actual may differ">≈</span>
+                                        <span class="ms-1 text-muted small fw-normal" title="Submitted — this is the amount actually paid">actual</span>
+                                    }
+                                    else if (IsRecurringEstimate(t))
+                                    {
+                                        <span class="ms-1 text-muted small" title="Estimated from the bill's recurring amount — actual may differ">≈</span>
                                     }
                                 </td>
                                 <td class="text-end @(row.RunningBalance < 0 ? "text-danger fw-bold" : "")">
@@ -247,6 +251,10 @@ else
                                             <span class="me-1 text-muted small">Expected payment date:</span>
                                             <input type="date" class="form-control form-control-sm d-inline-block me-1" style="width:145px"
                                                    @bind="_submitDate" @bind:format="yyyy-MM-dd" />
+                                            <span class="me-1 text-muted small">Amount: $</span>
+                                            <input type="number" step="0.01" min="0" class="form-control form-control-sm d-inline-block me-1" style="width:100px"
+                                                   title="Change this if the amount you paid differs from what was expected"
+                                                   @bind="_submitAmount" />
                                             <button class="btn btn-sm btn-info me-1" @onclick="() => ConfirmSubmit(t)">Confirm</button>
                                             <button class="btn btn-sm btn-outline-secondary" @onclick="CancelSubmit">Cancel</button>
                                         }
@@ -439,6 +447,7 @@ else
     // Submit flow
     private int? _submittingId;
     private DateOnly _submitDate;
+    private decimal _submitAmount;   // positive payment amount; the transaction stores it as an outflow
 
     // Add manual transaction modal
     private bool _showAddModal;
@@ -532,10 +541,20 @@ else
         await LoadAsync();
     }
 
+    /// <summary>
+    /// A bill payment whose amount is only the bill's recurring estimate: auto-generated from the schedule and not
+    /// yet acted on. Submitted, received (entered by hand), scheduled-from-a-bill and auto-draft payments carry a
+    /// real amount, so they don't get the ≈.
+    /// </summary>
+    private static bool IsRecurringEstimate(CashFlowTransaction t) =>
+        t.IsProjected && t.Category == TransactionCategory.Bill
+        && !t.IsSubmitted && !t.IsAutoDraft && !t.IsManualOverride && t.BillOccurrenceId is null;
+
     private void BeginSubmit(CashFlowTransaction t)
     {
         _submittingId = t.Id;
         _submitDate = t.TransactionDate;   // default to the date it's already expected to clear, not today
+        _submitAmount = Math.Abs(t.Amount);
         _changingDateId = null;
     }
 
@@ -555,19 +574,27 @@ else
     private async Task ConfirmSubmit(CashFlowTransaction t)
     {
         var originalDate = t.TransactionDate;
-        await CashFlowRepo.MarkAsSubmittedAsync(t.Id, _userId, _submitDate);
+        // Only a changed, positive amount is written, keeping the transaction's sign (outflow stays an outflow).
+        decimal? paid = _submitAmount > 0 && _submitAmount != Math.Abs(t.Amount) ? _submitAmount : null;
+        await CashFlowRepo.MarkAsSubmittedAsync(t.Id, _userId, _submitDate,
+            paid is { } p ? (t.Amount < 0 ? -p : p) : null);
         if (t.Category == TransactionCategory.Bill && t.BillOccurrenceId is { } occId)
             await UpdateLinkedOccurrenceAsync(occId, o =>
             {
                 o.Status = BillOccurrenceStatus.Submitted;
                 o.SubmittedDate = DateOnly.FromDateTime(DateTime.Today);
                 o.PlannedPayDate = _submitDate == o.DueDate ? null : _submitDate;
+                if (paid is { } amt)
+                {
+                    o.ActualAmount = amt;
+                    if (o.IsOneOff) o.EstimatedAmount = amt;
+                }
             });
         else if (t.Category == TransactionCategory.Bill && t.ReferenceId.HasValue)
             // Move the occurrence's planned pay date along with the transaction — they're matched by date,
             // so letting them drift apart orphans the open bill when this is later cleared or skipped.
             await BillRepo.UpdateOccurrenceStatusByBillAndPayDateAsync(t.ReferenceId.Value, _userId, originalDate,
-                BillOccurrenceStatus.Submitted, DateOnly.FromDateTime(DateTime.Today), _submitDate);
+                BillOccurrenceStatus.Submitted, DateOnly.FromDateTime(DateTime.Today), _submitDate, paid);
         _submittingId = null;
         await LoadAsync();
     }
