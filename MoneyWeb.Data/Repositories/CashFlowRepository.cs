@@ -128,7 +128,7 @@ public class CashFlowRepository(string connectionString) : ICashFlowRepository
         await conn.ExecuteAsync("""
             UPDATE CashFlowTransactions
             SET IsSubmitted = 1, TransactionDate = @Date, IsManualOverride = 1,
-                Amount = COALESCE(@Amount, Amount), UpdatedAt = GETUTCDATE()
+                Amount = COALESCE(CAST(@Amount AS decimal(18, 2)), Amount), UpdatedAt = GETUTCDATE()
             WHERE Id = @Id AND UserId = @UserId
             """, new { Id = id, UserId = userId, Date = expectedPayDate, Amount = newAmount });
     }
@@ -281,7 +281,7 @@ public class CashFlowRepository(string connectionString) : ICashFlowRepository
             UPDATE CashFlowTransactions
             SET IsSubmitted = @Submitted, IsManualOverride = 1,
                 TransactionDate = COALESCE(@NewDate, TransactionDate),
-                Amount = COALESCE(-@PaymentAmount, Amount), UpdatedAt = GETUTCDATE()
+                Amount = COALESCE(-CAST(@PaymentAmount AS decimal(18, 2)), Amount), UpdatedAt = GETUTCDATE()
             WHERE BillOccurrenceId = @OccId AND UserId = @UserId AND IsProjected = 1
             """, new { OccId = billOccurrenceId, UserId = userId, Submitted = submitted, NewDate = newDate,
                        PaymentAmount = newPaymentAmount });
@@ -317,7 +317,7 @@ public class CashFlowRepository(string connectionString) : ICashFlowRepository
         using var conn = Connect();
         await conn.ExecuteAsync("""
             UPDATE CashFlowTransactions
-            SET IsSubmitted = 1, Amount = COALESCE(-@PaymentAmount, Amount), UpdatedAt = GETUTCDATE()
+            SET IsSubmitted = 1, Amount = COALESCE(-CAST(@PaymentAmount AS decimal(18, 2)), Amount), UpdatedAt = GETUTCDATE()
             WHERE ReferenceId = @ReferenceId AND UserId = @UserId
               AND Category = @Category AND IsManualOverride = 1 AND IsProjected = 1
               AND TransactionDate = @Date

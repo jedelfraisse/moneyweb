@@ -200,7 +200,7 @@ public class BillRepository(string connectionString) : IBillRepository
             UPDATE BillOccurrences SET
                 Status = @Status, SubmittedDate = @SubmittedDate,
                 PlannedPayDate = COALESCE(@NewPlannedPayDate, PlannedPayDate),
-                ActualAmount = COALESCE(@ActualAmount, ActualAmount), UpdatedAt = GETUTCDATE()
+                ActualAmount = COALESCE(CAST(@ActualAmount AS decimal(18, 2)), ActualAmount), UpdatedAt = GETUTCDATE()
             WHERE BillId = @BillId AND UserId = @UserId
               AND (PlannedPayDate = @PayDate OR (PlannedPayDate IS NULL AND DueDate = @PayDate))
             """,
