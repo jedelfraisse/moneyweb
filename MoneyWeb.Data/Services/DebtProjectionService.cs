@@ -67,9 +67,7 @@ public class DebtProjectionService : IDebtProjectionService
                 UserId = userId,
                 BankAccountId = effectiveBanks[p.DebtId]!.Value,
                 TransactionDate = p.Date,
-                Description = p.FeesAmount > 0
-                    ? $"Debt Payment: {p.DebtName} (+ {p.FeesAmount.ToString("C")} fees)"
-                    : $"Debt Payment: {p.DebtName}",
+                Description = $"Debt Payment: {p.DebtName}",   // amount below already includes any fees
                 Amount = -(p.Amount + p.FeesAmount),
                 Category = TransactionCategory.DebtPayment,
                 ReferenceId = p.DebtId,
@@ -101,9 +99,7 @@ public class DebtProjectionService : IDebtProjectionService
                 UserId = userId,
                 BankAccountId = debt.BankAccountId!.Value,
                 TransactionDate = p.Date,
-                Description = p.FeesAmount > 0
-                    ? $"Debt Payment: {p.DebtName} (+ {p.FeesAmount.ToString("C")} fees)"
-                    : $"Debt Payment: {p.DebtName}",
+                Description = $"Debt Payment: {p.DebtName}",   // amount below already includes any fees
                 Amount = -(p.Amount + p.FeesAmount),
                 Category = TransactionCategory.DebtPayment,
                 ReferenceId = p.DebtId,

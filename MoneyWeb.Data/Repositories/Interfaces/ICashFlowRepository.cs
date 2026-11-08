@@ -30,8 +30,9 @@ public interface ICashFlowRepository
     Task UpdateManualOverrideDateAsync(int id, int userId, DateOnly newDate);
 
     /// <summary>Mark a projected transaction as submitted to the vendor — awaiting clearance — and set its
-    /// expected payment date. Also pins it as a manual override so a later projection re-push won't drop it.</summary>
-    Task MarkAsSubmittedAsync(int id, int userId, DateOnly expectedPayDate);
+    /// expected payment date, and optionally its amount (signed, as stored). Also pins it as a manual override so a
+    /// later projection re-push won't drop it.</summary>
+    Task MarkAsSubmittedAsync(int id, int userId, DateOnly expectedPayDate, decimal? newAmount = null);
 
     /// <summary>Undo a submitted transaction — back to a plain pending projection (IsSubmitted = 0).</summary>
     Task MarkAsUnsubmittedAsync(int id, int userId);
@@ -73,8 +74,10 @@ public interface ICashFlowRepository
     Task<IEnumerable<CashFlowTransaction>> GetPendingBeforeAsync(int userId, DateOnly before);
 
     /// <summary>Set or clear "submitted" on the pending payment linked to a bill occurrence (by BillOccurrenceId),
-    /// optionally moving its date. Pins it as a manual override so regeneration leaves it alone.</summary>
-    Task SetSubmittedForOccurrenceAsync(int billOccurrenceId, int userId, bool submitted, DateOnly? newDate = null);
+    /// optionally moving its date and changing its amount (a positive payment amount; stored as an outflow).
+    /// Pins it as a manual override so regeneration leaves it alone.</summary>
+    Task SetSubmittedForOccurrenceAsync(int billOccurrenceId, int userId, bool submitted, DateOnly? newDate = null,
+        decimal? newPaymentAmount = null);
 
     /// <summary>Delete the pending payment(s) linked to a bill occurrence (by BillOccurrenceId).</summary>
     Task DeleteForOccurrenceAsync(int billOccurrenceId, int userId);
@@ -90,8 +93,10 @@ public interface ICashFlowRepository
 
     /// <summary>Mark a bill occurrence's CF transaction as submitted (awaiting clearance), matched by
     /// source+date rather than by ID. Does not move the transaction's date — "submitted" is a status,
-    /// not a reschedule; the payment still lands on its planned date.</summary>
-    Task MarkSubmittedForSourceOnDateAsync(int referenceId, int userId, TransactionCategory category, DateOnly date);
+    /// not a reschedule; the payment still lands on its planned date. Optionally changes its amount
+    /// (a positive payment amount; stored as an outflow).</summary>
+    Task MarkSubmittedForSourceOnDateAsync(int referenceId, int userId, TransactionCategory category, DateOnly date,
+        decimal? newPaymentAmount = null);
 
     /// <summary>
     /// Delete every still-upcoming (IsProjected) transaction for a source, regardless of manual-override —

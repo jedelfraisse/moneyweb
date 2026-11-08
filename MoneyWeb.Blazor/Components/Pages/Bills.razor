@@ -135,7 +135,7 @@ else
                                 @if (occ.Status is BillOccurrenceStatus.Estimated or BillOccurrenceStatus.Received)
                                 {
                                     <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => OpenEditOccurrence(occ)">Edit</button>
-                                    <button class="btn btn-sm btn-outline-warning me-1" @onclick="() => AdvanceOccurrenceStatus(occ, BillOccurrenceStatus.Submitted)">📤 Submit</button>
+                                    <button class="btn btn-sm btn-outline-warning me-1" @onclick="() => OpenSubmit(occ)">📤 Submit</button>
                                 }
                                 @if (occ.Status == BillOccurrenceStatus.Submitted)
                                 {
@@ -234,7 +234,7 @@ else
                                                                 }
                                                                 @if (occ.Status == BillOccurrenceStatus.Received)
                                                                 {
-                                                                    <button class="btn btn-sm btn-outline-warning me-1" @onclick="() => AdvanceOccurrenceStatus(occ, BillOccurrenceStatus.Submitted)">📤 Submit</button>
+                                                                    <button class="btn btn-sm btn-outline-warning me-1" @onclick="() => OpenSubmit(occ)">📤 Submit</button>
                                                                 }
                                                                 @if (occ.Status == BillOccurrenceStatus.Submitted)
                                                                 {
@@ -340,7 +340,7 @@ else
                                                                 }
                                                                 @if (occ.Status == BillOccurrenceStatus.Received)
                                                                 {
-                                                                    <button class="btn btn-sm btn-outline-warning me-1" @onclick="() => AdvanceOccurrenceStatus(occ, BillOccurrenceStatus.Submitted)">📤 Submit</button>
+                                                                    <button class="btn btn-sm btn-outline-warning me-1" @onclick="() => OpenSubmit(occ)">📤 Submit</button>
                                                                 }
                                                                 @if (occ.Status == BillOccurrenceStatus.Submitted)
                                                                 {
@@ -619,6 +619,57 @@ else
                 <div class="modal-footer">
                     <button class="btn btn-secondary" @onclick="() => _addToFlowOcc = null">Cancel</button>
                     <button class="btn btn-primary" @onclick="SaveAddToCashFlow">Add to cash flow</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_submittingOcc is not null)
+{
+    var expected = _submittingOcc.ActualAmount ?? _submittingOcc.EstimatedAmount;
+    var differs = _submitAmount != expected;
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.4)">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Submit payment – @_submittingOcc.DisplayName</h5>
+                    <button type="button" class="btn-close" @onclick="() => _submittingOcc = null"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small">
+                        Due @_submittingOcc.DueDate.ToString("MMM d, yyyy") · expected @expected.ToString("C").
+                        If you paid a different amount, enter it below. The pending payment in cash flow is updated to match.
+                    </p>
+                    <label class="form-label">Amount paid</label>
+                    <div class="input-group">
+                        <span class="input-group-text">$</span>
+                        <input type="number" step="0.01" min="0" class="form-control" @bind="_submitAmount" />
+                    </div>
+                    @if (differs && _submitAmount > 0)
+                    {
+                        <div class="form-text text-warning-emphasis">
+                            @((_submitAmount - expected) > 0 ? "+" : "−")@Math.Abs(_submitAmount - expected).ToString("C") vs. expected
+                        </div>
+                        @if (!_submittingOcc.IsOneOff && _bills.FirstOrDefault(b => b.Id == _submittingOcc.BillId) is { } submitBill)
+                        {
+                            <div class="form-check mt-3">
+                                <input class="form-check-input" type="checkbox" id="submitUpdateEstimate" @bind="_submitUpdateEstimate" />
+                                <label class="form-check-label" for="submitUpdateEstimate">
+                                    Also use @_submitAmount.ToString("C") as the estimate for future @submitBill.Name bills
+                                    <span class="text-muted">(currently @submitBill.Amount.ToString("C"))</span>
+                                </label>
+                            </div>
+                        }
+                    }
+                    @if (_submitError is not null)
+                    {
+                        <div class="alert alert-danger small mt-3 mb-0">@_submitError</div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="() => _submittingOcc = null">Cancel</button>
+                    <button class="btn btn-warning" @onclick="ConfirmSubmit">📤 Submit</button>
                 </div>
             </div>
         </div>
@@ -1019,7 +1070,51 @@ else
         CloseActualModal();
     }
 
-    private async Task AdvanceOccurrenceStatus(BillOccurrence occ, BillOccurrenceStatus newStatus)
+    // ── Submit (asks for the amount actually paid) ─────────────────
+
+    private BillOccurrence? _submittingOcc;
+    private decimal _submitAmount;
+    private bool _submitUpdateEstimate;
+    private string? _submitError;
+
+    private void OpenSubmit(BillOccurrence occ)
+    {
+        _submittingOcc = occ;
+        _submitAmount = occ.ActualAmount ?? occ.EstimatedAmount;
+        _submitUpdateEstimate = false;
+        _submitError = null;
+    }
+
+    private async Task ConfirmSubmit()
+    {
+        if (_submittingOcc is not { } occ) return;
+        if (_submitAmount <= 0) { _submitError = "Enter the amount you paid."; return; }
+        var user = await CurrentUserService.GetCurrentUserAsync();
+        if (user is null) return;
+
+        var expected = occ.ActualAmount ?? occ.EstimatedAmount;
+        decimal? paid = _submitAmount != expected ? _submitAmount : null;
+        if (paid is { } newAmount)
+        {
+            occ.ActualAmount = newAmount;
+            if (occ.IsOneOff) occ.EstimatedAmount = newAmount;
+
+            // Optionally carry the new amount forward to the bill's estimate and its later projected payments.
+            if (_submitUpdateEstimate && !occ.IsOneOff && _bills.FirstOrDefault(b => b.Id == occ.BillId) is { } bill
+                && bill.Amount != newAmount)
+            {
+                bill.Amount = newAmount;
+                await BillRepo.UpdateAsync(bill);
+                await CashFlowRepo.UpdateProjectedAmountsAsync(bill.Id, user.Id, TransactionCategory.Bill, -newAmount,
+                    (occ.PlannedPayDate ?? occ.DueDate).AddDays(1));
+            }
+        }
+
+        _submittingOcc = null;
+        await AdvanceOccurrenceStatus(occ, BillOccurrenceStatus.Submitted, paid);
+    }
+
+    private async Task AdvanceOccurrenceStatus(BillOccurrence occ, BillOccurrenceStatus newStatus, decimal? paidAmount = null)
     {
         var user = await CurrentUserService.GetCurrentUserAsync();
         if (user is null) return;
@@ -1034,10 +1129,11 @@ else
         {
             var payDate = occ.PlannedPayDate ?? occ.DueDate;
             if (newStatus == BillOccurrenceStatus.Submitted)
-                await CashFlowRepo.MarkSubmittedForSourceOnDateAsync(occ.BillId.Value, user.Id, TransactionCategory.Bill, payDate);
+                await CashFlowRepo.MarkSubmittedForSourceOnDateAsync(occ.BillId.Value, user.Id, TransactionCategory.Bill, payDate,
+                    paidAmount);
         }
         if (newStatus == BillOccurrenceStatus.Submitted)
-            await CashFlowRepo.SetSubmittedForOccurrenceAsync(occ.Id, user.Id, submitted: true);
+            await CashFlowRepo.SetSubmittedForOccurrenceAsync(occ.Id, user.Id, submitted: true, newPaymentAmount: paidAmount);
         if (occ.BillId.HasValue)
         {
             _occurrences.Remove(occ.BillId.Value);

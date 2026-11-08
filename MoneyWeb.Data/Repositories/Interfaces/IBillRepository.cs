@@ -27,8 +27,9 @@ public interface IBillRepository
     Task DeleteOccurrenceByBillAndPayDateAsync(int billId, int userId, DateOnly payDate);
 
     /// <summary>Update the status (and optionally submitted date) of a bill occurrence matched by bill + effective pay date.
-    /// Pass <paramref name="newPlannedPayDate"/> when the cash-flow transaction is being moved, so the two stay matched.</summary>
-    Task UpdateOccurrenceStatusByBillAndPayDateAsync(int billId, int userId, DateOnly payDate, BillOccurrenceStatus status, DateOnly? submittedDate, DateOnly? newPlannedPayDate = null);
+    /// Pass <paramref name="newPlannedPayDate"/> when the cash-flow transaction is being moved, so the two stay matched,
+    /// and <paramref name="actualAmount"/> when the amount paid differs from what was expected.</summary>
+    Task UpdateOccurrenceStatusByBillAndPayDateAsync(int billId, int userId, DateOnly payDate, BillOccurrenceStatus status, DateOnly? submittedDate, DateOnly? newPlannedPayDate = null, decimal? actualAmount = null);
 
     /// <summary>A bill's cash-flow payment cleared — mark its matching open occurrence Confirmed, or record a new
     /// Confirmed occurrence if there wasn't one (e.g. an auto-draft), so the bill's next due date advances.</summary>
