@@ -15,6 +15,21 @@ public class BillProjectionService
         }
     }
 
+    /// <summary>
+    /// The scheduled periods the user is skipping by choosing <paramref name="chosenNextDue"/> as the bill's next due
+    /// date: every period from the bill's current upcoming due date up to (not including) the chosen date. Empty when
+    /// the chosen date isn't later. <paramref name="bill"/> must already carry the schedule derived from the chosen
+    /// date (DayDue/AnnualMonth) and its LastOccurrenceDueDate.
+    /// Example: monthly-on-1st, last recorded Oct 15 → upcoming Nov 1; choosing Dec 1 skips [Nov 1].
+    /// </summary>
+    public IReadOnlyList<DateOnly> PeriodsSkippedBy(Bill bill, DateOnly chosenNextDue, DateOnly today)
+    {
+        var upcoming = bill.UpcomingDueDate(today);
+        return chosenNextDue <= upcoming
+            ? []
+            : GetOccurrenceDates(bill, upcoming, chosenNextDue.AddDays(-1)).ToList();
+    }
+
     private static DateOnly FirstOccurrenceOnOrAfter(Bill bill, DateOnly from)
     {
         return bill.Frequency switch

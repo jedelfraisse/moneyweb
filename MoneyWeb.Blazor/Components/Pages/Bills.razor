@@ -11,6 +11,7 @@
 @inject ICashFlowRepository CashFlowRepo
 @inject IBillCashFlowSyncService SyncSvc
 @inject IBillPaymentService BillPaymentSvc
+@inject BillProjectionService BillProjection
 @inject SqidsEncoder<int> Sqids
 
 <PageTitle>Bills – MoneyWeb</PageTitle>
@@ -419,6 +420,13 @@ else
                                 </span>
                             </label>
                             <input class="form-control" type="date" @bind="_nextDueDate" @bind:format="yyyy-MM-dd" />
+                            @if (SkippedByChosenDate() is { Count: > 0 } skipped)
+                            {
+                                <div class="form-text text-warning-emphasis">
+                                    @(skipped.Count == 1 ? skipped[0].ToString("MMM d") : $"{skipped.Count} periods, {skipped[0]:MMM d} – {skipped[^1]:MMM d},")
+                                    will be marked as handled.
+                                </div>
+                            }
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">Payment Method</label>
@@ -667,6 +675,8 @@ else
     private DateOnly? _occPlannedPayDate;
     private decimal _occActualAmount;
     private bool _occIsOneOff;              // when true, skip updating the bill estimate
+    private DateOnly _occOriginalPayDate;   // editing: the occurrence's pay date before the edit
+    private decimal _occOriginalAmount;     // editing: its amount before the edit
     private string? _occModalError;
 
     // Delete
@@ -729,7 +739,8 @@ else
             Id = bill.Id, UserId = bill.UserId, Name = bill.Name, Amount = bill.Amount,
             Frequency = bill.Frequency, DayDue = bill.DayDue, AnnualMonth = bill.AnnualMonth,
             Category = bill.Category, PaymentMethod = bill.PaymentMethod,
-            BankAccountId = bill.BankAccountId, Notes = bill.Notes, IsActive = bill.IsActive
+            BankAccountId = bill.BankAccountId, Notes = bill.Notes, IsActive = bill.IsActive,
+            LastOccurrenceDueDate = bill.LastOccurrenceDueDate
         };
         _bankIdStr = bill.BankAccountId?.ToString() ?? string.Empty;
         _annualMonthStr = bill.AnnualMonth?.ToString() ?? string.Empty;
@@ -742,6 +753,27 @@ else
 
     private void CloseModal() { _showModal = false; _modalError = null; }
 
+    /// <summary>The picker sets the schedule: day of week (weekly), day of month, and for annual bills the month too.</summary>
+    private void ApplyScheduleFromChosenDate(Bill bill)
+    {
+        bill.DayDue = bill.Frequency is BillFrequency.Weekly or BillFrequency.BiWeekly
+            ? (int)_nextDueDate.DayOfWeek
+            : _nextDueDate.Day;
+        bill.AnnualMonth = bill.Frequency == BillFrequency.Annual ? _nextDueDate.Month : null;
+    }
+
+    /// <summary>Preview, while the form is open, of the periods saving would mark as handled.</summary>
+    private IReadOnlyList<DateOnly> SkippedByChosenDate()
+    {
+        var preview = new Bill
+        {
+            Frequency = _editing.Frequency, PaymentMethod = _editing.PaymentMethod,
+            LastOccurrenceDueDate = _editing.LastOccurrenceDueDate
+        };
+        ApplyScheduleFromChosenDate(preview);
+        return BillProjection.PeriodsSkippedBy(preview, _nextDueDate, DateOnly.FromDateTime(DateTime.Today));
+    }
+
     private async Task SaveBill()
     {
         if (string.IsNullOrWhiteSpace(_editing.Name)) { _modalError = "Name is required."; return; }
@@ -750,10 +782,9 @@ else
         _editing.BankAccountId = int.TryParse(_bankIdStr, out var bid) ? bid : null;
 
         // Derive DayDue (and AnnualMonth) from the date picker
-        _editing.DayDue = _editing.Frequency is BillFrequency.Weekly or BillFrequency.BiWeekly
-            ? (int)_nextDueDate.DayOfWeek
-            : _nextDueDate.Day;
-        _editing.AnnualMonth = _editing.Frequency == BillFrequency.Annual ? _nextDueDate.Month : null;
+        ApplyScheduleFromChosenDate(_editing);
+        // A chosen date later than the bill's upcoming due date skips the periods in between (e.g. one paid early).
+        var skipped = BillProjection.PeriodsSkippedBy(_editing, _nextDueDate, DateOnly.FromDateTime(DateTime.Today));
 
         var user = await CurrentUserService.GetCurrentUserAsync();
         if (user is null) return;
@@ -763,6 +794,20 @@ else
             _editing.Id = await BillRepo.CreateAsync(_editing);
         else
             await BillRepo.UpdateAsync(_editing);
+
+        // Record the skipped periods as handled — the same thing Catch Up's "Move forward" does — so the next due
+        // date lands on the chosen one. No cash-flow payment is added for them.
+        if (skipped.Count > 0)
+        {
+            await BillRepo.CreateOccurrenceAsync(new BillOccurrence
+            {
+                BillId = _editing.Id, UserId = user.Id, DueDate = skipped[^1],
+                EstimatedAmount = _editing.Amount, Status = BillOccurrenceStatus.Confirmed,
+                Notes = $"Marked handled when the next due date was set to {_nextDueDate:MMM d, yyyy}"
+            });
+            if (_expanded.Contains(_editing.Id)) await LoadOccurrences(_editing.Id);
+            else _occurrences.Remove(_editing.Id);
+        }
 
         CloseModal();
         await LoadAsync();
@@ -824,11 +869,14 @@ else
     {
         _editingOcc = new BillOccurrence
         {
-            Id = occ.Id, BillId = occ.BillId, UserId = occ.UserId, BillName = occ.BillName,
-            DueDate = occ.DueDate, EstimatedAmount = occ.EstimatedAmount,
-            ActualAmount = occ.ActualAmount, Status = occ.Status,
+            Id = occ.Id, BillId = occ.BillId, UserId = occ.UserId, BillName = occ.BillName, Name = occ.Name,
+            SinkingFundId = occ.SinkingFundId, DueDate = occ.DueDate, PlannedPayDate = occ.PlannedPayDate,
+            EstimatedAmount = occ.EstimatedAmount, ActualAmount = occ.ActualAmount, Status = occ.Status,
             SubmittedDate = occ.SubmittedDate, Notes = occ.Notes
         };
+        // Remember where its cash-flow payment sits now, so saving can move it along with the edit.
+        _occOriginalPayDate = occ.PlannedPayDate ?? occ.DueDate;
+        _occOriginalAmount = occ.ActualAmount ?? occ.EstimatedAmount;
         _enteringActualBill = _bills.FirstOrDefault(b => b.Id == occ.BillId);
         _occDueDate = occ.DueDate;
         _occPlannedPayDate = occ.PlannedPayDate;
@@ -887,7 +935,16 @@ else
         if (isNewOccurrence)
             await BillRepo.CreateOccurrenceAsync(_editingOcc);
         else
+        {
             await BillRepo.UpdateOccurrenceAsync(_editingOcc);
+
+            // Keep its pending cash-flow payment on the edited pay date and amount.
+            var newPayDate = _editingOcc.PlannedPayDate ?? _editingOcc.DueDate;
+            var newAmount = _editingOcc.ActualAmount ?? _editingOcc.EstimatedAmount;
+            if (newPayDate != _occOriginalPayDate || newAmount != _occOriginalAmount)
+                await CashFlowRepo.MoveOccurrencePaymentAsync(_editingOcc.Id, _editingOcc.BillId, user.Id,
+                    _occOriginalPayDate, newPayDate, newAmount != _occOriginalAmount && newAmount > 0 ? newAmount : null);
+        }
 
         // When an actual amount is recorded, update the bill's estimated amount and ripple to future projected transactions
         if (!_occIsOneOff && _enteringActualBill is { } bill && _occActualAmount > 0 && _occActualAmount != bill.Amount)
